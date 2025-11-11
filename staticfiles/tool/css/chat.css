@@ -1,0 +1,139 @@
+body {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif ;
+    min-height: 100vh;
+}
+
+/* 聊天容器 */
+.chat_container {
+    height: 70vh;
+    display: flex;
+    flex-direction: column;
+    background-color: #fff;
+    box-shadow: 0 5px rgba(0,0,0,0.08);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+/* 消息区域 */
+.message-area {
+    flex: 1;
+    overflow: auto;
+    padding: 20px;
+    background-color: #f8f9fa;
+}
+
+/* 消息样式 */
+.message {
+    display: flex;
+    margin-bottom: 20px;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.message.received {
+    flex-direction: row;
+}
+
+.message-sent {
+    flex-direction: row-reverse;
+}
+
+.message-avater {
+    width: 70px;
+    margin: 0 12px;
+    padding: 12px 16px;
+    border-radius: 18px;
+    position: relative;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05) ;
+}
+
+.message.received .message-content {
+    background-color: #e9ecdf;
+    border-top-left-radius: 4px;
+}
+
+.message-sent .message-content {
+    background: linear-gradient(135deg, #4e73df 0%, #6f42c1 100%);
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+.message-sender {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.message.sent .message-sender {
+    text-align: right;
+    color: rgba(255, 255, 255, 0.8);
+}
+.message-text {
+    font-size: 0.95rem;
+    line-height: 1.4;
+    word-wrap: break-word;
+}
+.message-time {
+    font-size: 0.7rem;
+    margin-top: 4px;
+    opacity: 0.7;
+}
+.message.sent .message-time {
+    text-align: right;
+}
+
+/* 输入区域 */
+.input-area {
+    background-color: white;
+    border-top: 1px solid #e9ecef;
+}
+#message-input {
+    border-radius: 20px;
+    padding: 12px 20px;
+    border: 1px solid #dee2e6;
+    transition: all 0.3s;
+}
+#message-input:focus {
+    box-shadow: 0 0 0 0.25rem rgba(78, 115, 223, 0.25);
+    border-color: #6f42c1;
+}
+#send-button {
+    border-radius: 20px;
+    padding: 10px 24px;
+    font-weight: 500;
+    transition: all 0.3s;
+}
+/* 滚动条样式 */
+.message-area::-webkit-scrollbar {
+    width: 6px;
+}
+.message-area::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+.message-area::-webkit-scrollbar-thumb {
+    background: #c5c5c5;
+    border-radius: 10px;
+}
+.message-area::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+/* 动画效果 */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+/* 响应式调整 */
+@media (max-width: 576px) {
+    .message-content {
+        max-width: 85%;
+    }
+    
+    .chat-container {
+        height: 80vh;
+    }
+}
+/* 字符计数样式 */
+#character-count.warning {
+    color: #e74a3b;
+}

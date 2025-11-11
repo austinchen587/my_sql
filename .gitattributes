@@ -1,0 +1,8 @@
+# 强制将所有.js和.min.js文件视为二进制文件，Git不会更改其行尾符，也不会进行差异比较。
+*.js binary
+*.min.js binary
+
+# 或者，更精确地，只为staticfiles下的这些第三方库文件设置
+# staticfiles/admin/js/vendor/select2/*.js binary
+# staticfiles/admin/js/vendor/select2/*.min.js binary
+# staticfiles/admin/js/vendor/xregexp/*.js binary
