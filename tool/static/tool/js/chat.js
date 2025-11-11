@@ -1,10 +1,12 @@
-// 聊天对话框功能
+// chat.js - 集成 AI 的主聊天界面逻辑
 function initializeChat() {
     // DOM元素获取
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const messageArea = document.getElementById('message-area');
     const characterCount = document.getElementById('character-count');
+    const clearButton = document.getElementById('clear-chat');
+    const apiConfigBtn = document.getElementById('api-config-btn');
 
     // 检查是否所有必需的元素都存在
     if (!messageInput || !sendButton || !messageArea || !characterCount) {
@@ -12,75 +14,38 @@ function initializeChat() {
         return;
     }
 
-    // 最大字符数限制
+    // 配置
     const MAX_CHARACTERS = 1800;
+    let isAIThinking = false;
+    let thinkingElement = null;
+
+    // ==================== 辅助函数定义 ====================
 
     // 更新字符计数
     function updateCharacterCount() {
         const count = messageInput.value.length;
         characterCount.textContent = `${count}/${MAX_CHARACTERS}`;
-
-        // 当接近或超过限制时改变颜色
-        if (count > MAX_CHARACTERS * 0.9) {
-            characterCount.classList.add('text-danger');
-        } else {
-            characterCount.classList.remove('text-danger');
-        }
-    }
-
-    // 发送消息功能
-    function sendMessage() {
-        const messageText = messageInput.value.trim();
-        
-        // 验证消息
-        if (!messageText) {
-            messageInput.focus();
-            return;
-        }
-
-        if (messageText.length > MAX_CHARACTERS) {
-            alert(`消息不能超过${MAX_CHARACTERS}个字符`);
-            return;
-        }
-
-        // 创建消息元素
-        createMessageElement(messageText, 'sent');
-
-        // 模拟回复（2秒后）
-        setTimeout(() => {
-            const replies = [
-                "感谢您的消息！",
-                "我明白了，请继续。",
-                "这是一个很好的问题，让我查一下相关信息。",
-                "我已经记录下您的反馈。",
-                "我们正在处理您的请求，请稍等片刻。"
-            ];
-            const randomReply = replies[Math.floor(Math.random() * replies.length)];
-            createMessageElement(randomReply, 'received');
-        }, 2000);
-
-        // 清空输入框并更新计数
-        messageInput.value = '';
-        updateCharacterCount();
-
-        // 焦点回到输入框
-        messageInput.focus();
+        characterCount.classList.toggle('text-danger', count > MAX_CHARACTERS * 0.9);
     }
 
     // 创建消息元素并添加到聊天区域
-    function createMessageElement(text, type) {
+    function createMessageElement(text, type, senderName = null) {
         // 创建消息容器
         const messageElement = document.createElement('div');
-        messageElement.className = `message ${type}`;
+        messageElement.className = `message ${type} ${type === 'thinking' ? 'thinking' : ''}`;
         
-        // 创建头像 - 修正：正确创建avatar变量
+        // 创建头像
         const avatar = document.createElement('div');
         avatar.className = type === 'sent' 
             ? 'message-avatar bg-primary rounded-circle d-flex align-items-center justify-content-center'
-            : 'message-avatar bg-secondary rounded-circle d-flex align-items-center justify-content-center';
+            : type === 'thinking' 
+            ? 'message-avatar bg-warning rounded-circle d-flex align-items-center justify-content-center'
+            : 'message-avatar bg-success rounded-circle d-flex align-items-center justify-content-center';
         
         avatar.innerHTML = type === 'sent' 
             ? '<span class="text-white fw-bold">U</span>'
+            : type === 'thinking'
+            ? '<span class="text-white fw-bold">⚡</span>'
             : '<span class="text-white fw-bold">AI</span>';
 
         // 创建消息内容
@@ -90,12 +55,19 @@ function initializeChat() {
         // 添加发送者名称
         const sender = document.createElement('div');
         sender.className = 'message-sender';
-        sender.textContent = type === 'sent' ? '您' : '客服助手';
+        sender.textContent = senderName || (type === 'sent' ? '您' : 
+                           type === 'thinking' ? 'AI 思考中...' : 'AI助手');
 
         // 添加消息文本
         const messageText = document.createElement('div');
         messageText.className = 'message-text';
-        messageText.textContent = text;
+        
+        if (type === 'thinking') {
+            // 思考状态显示动画
+            messageText.innerHTML = '<div class="thinking-dots"><span>.</span><span>.</span><span>.</span></div>';
+        } else {
+            messageText.textContent = text;
+        }
 
         // 添加时间戳
         const time = document.createElement('div');
@@ -118,11 +90,122 @@ function initializeChat() {
 
         // 滚动到底部显示最新消息
         messageArea.scrollTop = messageArea.scrollHeight;
+
+        return messageElement;
     }
 
-    // 事件监听器
+    // 显示思考状态
+    function showThinking() {
+        if (isAIThinking) return null;
+        
+        isAIThinking = true;
+        thinkingElement = createMessageElement('', 'thinking');
+        return thinkingElement;
+    }
+
+    // 隐藏思考状态
+    function hideThinking() {
+        if (thinkingElement) {
+            thinkingElement.remove();
+            thinkingElement = null;
+        }
+        isAIThinking = false;
+    }
+
+    // 清空聊天记录
+    function clearChat() {
+        messageArea.innerHTML = '';
+        if (window.aiChatBot) {
+            window.aiChatBot.clearHistory();
+        }
+        hideThinking();
+    }
+
+    // 显示API配置界面
+    function showApiConfig() {
+        const currentApiKey = window.APP_CONFIG?.SILICONFLOW_API_KEY || '';
+        const apiKey = prompt('请输入硅基流动 API Key:', currentApiKey);
+        
+        if (apiKey !== null) {
+            if (window.APP_CONFIG) {
+                window.APP_CONFIG.setApiKey(apiKey);
+                alert('API Key 已保存');
+            } else {
+                alert('配置系统未加载，请刷新页面重试');
+            }
+        }
+    }
+
+    // ==================== 核心功能函数 ====================
+
+    // 发送消息功能
+    async function sendMessage() {
+
+        console.log('sendMessage 函数被调用');
+        const messageText = messageInput.value.trim();
+        console.log('消息内容:', messageText);
+        
+        // 验证消息
+        if (!messageText) {
+            console.log('消息为空，取消发送');
+            messageInput.focus();
+            return;
+        }
+
+        if (messageText.length > MAX_CHARACTERS) {
+            console.log('消息长度超限:', messageText.length);
+            alert(`消息不能超过${MAX_CHARACTERS}个字符`);
+            return;
+        }
+        console.log('开始发送消息流程...');
+
+        // 检查AI功能是否可用
+        if (!window.aiChatBot) {
+            createMessageElement('AI功能未正确加载，请检查控制台错误信息', 'received');
+            return;
+        }
+
+        // 检查API配置
+        if (!window.APP_CONFIG?.SILICONFLOW_API_KEY) {
+            createMessageElement('请先配置API Key（点击右上角设置按钮）', 'received');
+            return;
+        }
+
+        // 添加用户消息
+        createMessageElement(messageText, 'sent');
+
+        // 清空输入框并更新计数
+        messageInput.value = '';
+        updateCharacterCount();
+
+        // 显示思考状态
+        const thinkingElement = showThinking();
+
+        try {
+            // 发送到AI
+            const aiReply = await window.aiChatBot.sendMessage(messageText);
+            
+            // 隐藏思考状态，显示AI回复
+            hideThinking();
+            createMessageElement(aiReply, 'received');
+
+        } catch (error) {
+            // 处理错误
+            hideThinking();
+            createMessageElement(`错误: ${error.message}`, 'received');
+            console.error('发送消息失败:', error);
+        }
+
+        // 焦点回到输入框
+        messageInput.focus();
+    }
+
+    // ==================== 事件监听器设置 ====================
+
+    // 发送按钮点击事件
     sendButton.addEventListener('click', sendMessage);
 
+    // 输入框事件
     messageInput.addEventListener('input', updateCharacterCount);
 
     messageInput.addEventListener('keydown', function(e) {
@@ -132,14 +215,60 @@ function initializeChat() {
         }
     });
 
+    // 清空聊天按钮
+    if (clearButton) {
+        clearButton.addEventListener('click', clearChat);
+    }
+
+    // API配置按钮
+    if (apiConfigBtn) {
+        apiConfigBtn.addEventListener('click', showApiConfig);
+    }
+
+    // ==================== 初始化设置 ====================
+
     // 页面加载后焦点自动放在输入框
     messageInput.focus();
     updateCharacterCount();
+
+    // 检查配置状态
+    if (!window.APP_CONFIG?.SILICONFLOW_API_KEY) {
+        console.warn('请先配置API Key');
+        // 可以在这里添加一个提示消息
+        setTimeout(() => {
+            createMessageElement('请点击右上角设置按钮配置API Key以启用AI聊天功能', 'received');
+        }, 1000);
+    }
 }
 
-// 确保DOM完全加载后再执行
+
+
+// ==== 修改这部分代码（文件末尾）====
+
+// ==== 简化的初始化逻辑 ====
+console.log('chat.js 开始加载');
+// 等待所有脚本加载完成
+function initializeWhenReady() {
+    console.log('检查依赖状态:', {
+        APP_CONFIG: !!window.APP_CONFIG,
+        aiChatBot: !!window.aiChatBot
+    });
+    
+    if (window.APP_CONFIG && window.aiChatBot) {
+        console.log('所有依赖已加载，开始初始化聊天界面');
+        // 确保 aiChatBot 使用正确的配置
+        if (window.aiChatBot && window.aiChatBot.config !== window.APP_CONFIG) {
+            window.aiChatBot.config = window.APP_CONFIG;
+        }
+        initializeChat();
+    } else {
+        console.log('等待依赖加载...');
+        setTimeout(initializeWhenReady, 100);
+    }
+}
+// 页面加载后开始初始化
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeChat);
+    document.addEventListener('DOMContentLoaded', initializeWhenReady);
 } else {
-    initializeChat();
+    initializeWhenReady();
 }

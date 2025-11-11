@@ -26,12 +26,12 @@ body {
 /* 消息样式 */
 .message {
     display: flex;
-    margin-bottom: 20px;
-    animation: fadeIn 0.3s ease-in-out;
+    margin-bottom: 1rem;
+    align-items: flex-start;
 }
 
 .message.received {
-    flex-direction: row;
+    flex-direction: row-reverse;
 }
 
 .message-sent {
@@ -39,12 +39,14 @@ body {
 }
 
 .message-avater {
-    width: 70px;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+}
+
+.message-content {
     margin: 0 12px;
-    padding: 12px 16px;
-    border-radius: 18px;
-    position: relative;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05) ;
+    max-width: 70%;
 }
 
 .message.received .message-content {
@@ -69,15 +71,21 @@ body {
     color: rgba(255, 255, 255, 0.8);
 }
 .message-text {
-    font-size: 0.95rem;
-    line-height: 1.4;
+    background: #f1f3f5;
+    padding: 8px 12px;
+    border-radius: 12px;
     word-wrap: break-word;
 }
 .message-time {
     font-size: 0.7rem;
+    color: #6c757d;
     margin-top: 4px;
-    opacity: 0.7;
 }
+
+.text-danger {
+    color: #dc3545 !important;
+}
+
 .message.sent .message-time {
     text-align: right;
 }
