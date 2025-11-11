@@ -7,6 +7,21 @@ function initializeChat() {
     const characterCount = document.getElementById('character-count');
     const clearButton = document.getElementById('clear-chat');
     const apiConfigBtn = document.getElementById('api-config-btn');
+    
+
+    // ==================== 新增：初始化历史管理器 ====================
+    let historyManager = null;
+    if (window.ChatHistoryManager) {
+        historyManager = new ChatHistoryManager();
+        console.log('历史管理器初始化成功');
+    } else {
+        console.warn('历史管理器未加载，历史保存功能将不可用');
+    }
+    // ==================== 新增结束 ====================
+
+
+
+
 
     // 检查是否所有必需的元素都存在
     if (!messageInput || !sendButton || !messageArea || !characterCount) {
@@ -119,6 +134,13 @@ function initializeChat() {
             window.aiChatBot.clearHistory();
         }
         hideThinking();
+
+        // ==================== 新增：创建新会话 ====================
+    if (historyManager) {
+        const newSessionId = historyManager.createNewSession();
+        console.log('已创建新会话:', newSessionId);
+    }
+    // ==================== 新增结束 ====================
     }
 
     // 显示API配置界面
@@ -135,6 +157,9 @@ function initializeChat() {
             }
         }
     }
+
+    
+
 
     // ==================== 核心功能函数 ====================
 
@@ -188,6 +213,13 @@ function initializeChat() {
             // 隐藏思考状态，显示AI回复
             hideThinking();
             createMessageElement(aiReply, 'received');
+            // ==================== 新增：保存历史记录 ====================
+        if (historyManager && window.aiChatBot) {
+            const currentHistory = window.aiChatBot.getHistory();
+            historyManager.saveChatHistory(currentHistory);
+            console.log('对话历史已保存');
+        }
+        // ==================== 新增结束 ====================
 
         } catch (error) {
             // 处理错误
@@ -199,6 +231,34 @@ function initializeChat() {
         // 焦点回到输入框
         messageInput.focus();
     }
+
+    // ==================== 新增：页面加载时恢复历史记录 ====================
+function restoreChatHistory() {
+    if (historyManager && window.aiChatBot) {
+        const savedHistory = historyManager.loadCurrentSessionHistory();
+        if (savedHistory.length > 0) {
+            window.aiChatBot.setHistory(savedHistory);
+            
+            // 重新渲染消息到界面（跳过系统消息）
+            savedHistory.forEach(message => {
+                if (message.role === 'user') {
+                    createMessageElement(message.content, 'sent');
+                } else if (message.role === 'assistant') {
+                    createMessageElement(message.content, 'received');
+                }
+            });
+            
+            console.log('已恢复历史记录:', savedHistory.length, '条消息');
+        }
+    }
+}
+// ==================== 新增结束 ====================
+
+
+
+
+
+
 
     // ==================== 事件监听器设置 ====================
 
@@ -230,6 +290,9 @@ function initializeChat() {
     // 页面加载后焦点自动放在输入框
     messageInput.focus();
     updateCharacterCount();
+
+    // 恢复历史记录
+    restoreChatHistory();
 
     // 检查配置状态
     if (!window.APP_CONFIG?.SILICONFLOW_API_KEY) {
