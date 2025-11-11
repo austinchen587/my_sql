@@ -234,10 +234,20 @@ function initializeChat() {
 
     // ==================== 新增：页面加载时恢复历史记录 ====================
 function restoreChatHistory() {
+    console.log('🔍 开始恢复历史记录...');
+    console.log('历史管理器状态:', !!historyManager);
+    console.log('AI聊天机器人状态:', !!window.aiChatBot);
+    
     if (historyManager && window.aiChatBot) {
         const savedHistory = historyManager.loadCurrentSessionHistory();
-        if (savedHistory.length > 0) {
+        console.log('加载到的历史记录:', savedHistory);
+        
+        if (savedHistory && savedHistory.length > 0) {
+            // 设置到 AI 聊天机器人
             window.aiChatBot.setHistory(savedHistory);
+            
+            // 清空当前消息区域
+            messageArea.innerHTML = '';
             
             // 重新渲染消息到界面（跳过系统消息）
             savedHistory.forEach(message => {
@@ -248,8 +258,15 @@ function restoreChatHistory() {
                 }
             });
             
-            console.log('已恢复历史记录:', savedHistory.length, '条消息');
+            console.log('✅ 已恢复历史记录:', savedHistory.length, '条消息');
+            
+            // 滚动到底部
+            messageArea.scrollTop = messageArea.scrollHeight;
+        } else {
+            console.log('ℹ️ 没有历史记录需要恢复');
         }
+    } else {
+        console.error('❌ 无法恢复历史记录：依赖未就绪');
     }
 }
 // ==================== 新增结束 ====================
@@ -292,16 +309,34 @@ function restoreChatHistory() {
     updateCharacterCount();
 
     // 恢复历史记录
-    restoreChatHistory();
+    // 延迟恢复历史记录，确保 aiChatBot 已初始化
+setTimeout(() => {
+    console.log('🔄 延迟恢复历史记录...');
+    if (window.aiChatBot && historyManager) {
+        restoreChatHistory();
+    } else {
+        console.warn('⚠️ AI聊天机器人未就绪，无法恢复历史记录');
+    }
+}, 500);
 
     // 检查配置状态
+    setTimeout(() => {
     if (!window.APP_CONFIG?.SILICONFLOW_API_KEY) {
         console.warn('请先配置API Key');
         // 可以在这里添加一个提示消息
         setTimeout(() => {
             createMessageElement('请点击右上角设置按钮配置API Key以启用AI聊天功能', 'received');
-        }, 1000);
+        }, 1500);
+    } else {
+        console.log('✅ API Key 已配置，准备恢复历史记录');
+        // 延迟恢复历史记录
+        setTimeout(() => {
+            if (window.aiChatBot && historyManager) {
+                restoreChatHistory();
+            }
+        }, 800);
     }
+}, 300);
 }
 
 
