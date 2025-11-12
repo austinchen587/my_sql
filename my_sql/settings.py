@@ -136,3 +136,7 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+AI_API_KEY = os.getenv('AI_API_KEY', 'your-siliconflow-apikey')
+AI_API_BASE = os.getenv('AI_API_BASE', 'https://api.siliconflow.cn/v1')
+AI_MODEL = os.getenv('AI_MODEL', 'deepseek-ai/DeepSeek-V3.1-Terminus')
