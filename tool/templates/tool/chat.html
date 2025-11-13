@@ -5,17 +5,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>聊天-主页</title>
+    <title>智能聊天助手</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- 自定义CSS -->
     <link rel="stylesheet" href="{% static 'tool/css/chat.css' %}">
+    <!-- Markdown渲染库 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@2.4.0/dist/purify.min.js"></script>
 </head>
 
 <body>
-    <div class="container-fluid py-4">
-        <div class="row justify-content-center">
-            <div class="col-md-8 col-lg-6">
+    <div class="container-fluid py-4 h-100">
+        <div class="row justify-content-center h-100">
+            <div class="col-12 col-lg-10 col-xl-8 h-100">
                 <!-- 聊天标题和操作按钮 -->
                 <div class="d-flex align-items-center justify-content-between mb-4">
                     <div class="d-flex align-items-center">
@@ -23,42 +26,43 @@
                             <span class="text-white fw-bold">💬</span>
                         </div>
                         <div>
-                            <h3 class="mb-0">聊天对话框</h3>
-                            <small class="text-muted">在线客服</small>
+                            <h3 class="mb-0">磊极政府采购智能系统</h3>
+                            <small class="text-muted">基于全球数据采购分析平台</small>
                         </div>
                     </div>
 
                     <!-- 操作按钮 -->
                     <div class="d-flex gap-2">
                         <button id="clear-chat" class="btn btn-outline-secondary btn-sm">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash me-1" viewBox="0 0 16 16">
-                                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/>
-                                    <path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/>
-                                </svg>
-                                清空
-                            </button>
+                            <i class="bi bi-trash me-1"></i>清空对话
+                        </button>
                         <button id="api-config-btn" class="btn btn-outline-primary btn-sm">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-gear me-1" viewBox="0 0 16 16">
-                                    <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"/>
-                                    <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z"/>
-                                </svg>
-                                设置
-                            </button>
+                            <i class="bi bi-gear me-1"></i>设置
+                        </button>
                     </div>
                 </div>
 
                 <!-- 聊天内容区域 -->
-                <div class="chat-container bg-white shadow-sm rounded-3">
+                <div class="chat-container bg-white shadow-sm rounded-3 h-100">
                     <div id="message-area" class="message-area">
                         <!-- 初始欢迎消息 -->
                         <div class="message received">
-                            <div class="message-avatar bg-secondary rounded-circle d-flex align-items-center justify-content-center">
-                                <span class="text-white fw-bold">AI</span>
+                            <div class="message-avatar bg-success rounded-circle d-flex align-items-center justify-content-center">
+                                <span class="text-white fw-bold">🤖</span>
                             </div>
                             <div class="message-content">
-                                <div class="message-sender">客服助手</div>
-                                <div class="message-text">您好！我是您的客服助手，有什么可以帮助您的吗？</div>
-                                <div class="message-time">10:00 AM</div>
+                                <div class="message-sender">AI助手</div>
+                                <div class="message-text">
+                                    <h4>👋 欢迎使用智能聊天助手！</h4>
+                                    <p>我是一个AI助手，可以帮助您：</p>
+                                    <ul>
+                                        <li>📊 <strong>数据分析</strong>：在消息末尾添加 <code>#psql</code> 进行数据库查询</li>
+                                        <li>💬 <strong>智能对话</strong>：普通聊天交流</li>
+                                        <li>🔍 <strong>信息查询</strong>：获取采购公告、预算等信息</li>
+                                    </ul>
+                                    <p>请开始您的问题吧！</p>
+                                </div>
+                                <div class="message-time" id="welcome-time"></div>
                             </div>
                         </div>
                     </div>
@@ -68,11 +72,8 @@
                         <div class="d-flex">
                             <input type="text" id="message-input" class="form-control me-2" placeholder="输入您的消息...">
                             <button id="send-button" class="btn btn-primary d-flex align-items-center">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-send-fill me-1" viewBox="0 0 16 16">
-                                        <path d="M15.964.686a.5.5 0 0 0-.65-.65L.767 5.855H.766l-.452.18a.5.5 0 0 0-.082.887l.41.26.001.002 4.995 3.178 3.178 4.995.002.002.26.41a.5.5 0 0 0 .886-.083l6-15Zm-1.833 1.89L6.637 10.07l-.215-.338a.5.5 0 0 0-.154-.154l-.338-.215 7.494-7.494 1.178-.471-.47 1.178Z"/>
-                                    </svg>
-                                    发送
-                                </button>
+                                <i class="bi bi-send-fill me-1"></i>发送
+                            </button>
                         </div>
                         <div class="mt-2 d-flex justify-content-between">
                             <small class="text-muted">按 Enter 发送，Shift+Enter 换行</small>
@@ -84,14 +85,25 @@
         </div>
     </div>
 
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <!-- Bootstrap 5 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
     <!-- 自定义JS -->
     <script src="{% static 'tool/js/config.js' %}"></script>
     <script src="{% static 'tool/js/chat_ai.js' %}"></script>
     <script src="{% static 'tool/js/chat_ai_history.js' %}"></script>
     <script src="{% static 'tool/js/chatHandlers.js' %}"></script>
     <script src="{% static 'tool/js/chat.js' %}"></script>
+    
+    <script>
+        // 设置欢迎消息的时间为当前时间
+        document.getElementById('welcome-time').textContent = new Date().toLocaleTimeString('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    </script>
 </body>
 
 </html>
