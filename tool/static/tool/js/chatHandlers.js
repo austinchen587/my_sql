@@ -43,7 +43,7 @@ class ChatMessageHandler {
 
             const result = await response.json();
             console.log('后端响应详情:', result);
-            
+
             return this.processBackendResponse(result);
 
         } catch (error) {
@@ -59,7 +59,7 @@ class ChatMessageHandler {
      */
     static processBackendResponse(result) {
         console.log('处理后端响应:', result);
-        
+
         // 保存处理日志供调试
         if (result.process_log) {
             console.log('📋 处理过程日志:', result.process_log);
@@ -67,32 +67,30 @@ class ChatMessageHandler {
 
         if (result.status === 'success') {
             // 根据 response_type 处理不同类型的成功响应
-            switch(result.response_type) {
+            switch (result.response_type) {
                 case 'intelligent_analysis':
                     console.log('🎯 处理智能分析响应');
                     return this.handleIntelligentAnalysis(result);
-                    
+
                 case 'data_analysis':
                     console.log('📊 处理标准数据分析响应');
                     return this.handleDataAnalysis(result);
-                    
+
                 case 'database_intro':
                     console.log('🏛️ 处理数据库介绍响应');
                     return this.handleDatabaseIntroduction(result);
-                    
+
                 case 'normal_chat':
                     console.log('💬 处理普通聊天响应');
                     return result.message;
-                    
+
                 default:
                     console.warn('⚠️ 未知响应类型，使用默认处理:', result.response_type);
                     return this.handleDefaultResponse(result);
             }
-        } 
-        else if (result.status === 'error') {
+        } else if (result.status === 'error') {
             return this.formatErrorResponse(result.message);
-        }
-        else {
+        } else {
             console.warn('❓ 未知响应状态:', result.status);
             return '未知响应格式，请联系管理员';
         }
@@ -103,12 +101,12 @@ class ChatMessageHandler {
      */
     static handleIntelligentAnalysis(result) {
         console.log('处理智能分析，数据量:', result.data_count);
-        
+
         // 直接使用后端返回的HTML内容
         if (result.message && this.isHtmlContent(result.message)) {
             return result.message;
         }
-        
+
         // 如果消息不是HTML，进行包装
         return `
         <div class="intelligent-analysis-result">
@@ -132,7 +130,7 @@ class ChatMessageHandler {
         if (result.message && this.isHtmlContent(result.message)) {
             return result.message;
         }
-        
+
         // 否则使用前端格式化
         return this.formatDataAnalysisResponse(result);
     }
@@ -144,7 +142,7 @@ class ChatMessageHandler {
         if (result.message && this.isHtmlContent(result.message)) {
             return result.message;
         }
-        
+
         return `
         <div class="database-intro-container">
             <div class="alert alert-info">
@@ -168,14 +166,14 @@ class ChatMessageHandler {
             }
             return this.escapeHtml(result.message);
         }
-        
+
         if (result.response) {
             if (this.isHtmlContent(result.response)) {
                 return result.response;
             }
             return this.escapeHtml(result.response);
         }
-        
+
         return '收到响应，但内容为空';
     }
 
@@ -183,11 +181,11 @@ class ChatMessageHandler {
      * 渲染处理过程日志（调试用）
      */
     static renderProcessLog(processLog) {
-        if (!processLog || !Array.isArray(processLog)) {
-            return '';
-        }
-        
-        return `
+            if (!processLog || !Array.isArray(processLog)) {
+                return '';
+            }
+
+            return `
         <details class="mt-3">
             <summary class="btn btn-sm btn-outline-secondary">🔍 查看处理过程</summary>
             <div class="mt-2 p-3 bg-light border rounded small">
@@ -404,6 +402,12 @@ class ChatMessageHandler {
             </div>
         `;
     }
+
+
+
+
+
+    
 
     /**
      * 处理普通聊天请求

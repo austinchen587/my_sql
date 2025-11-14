@@ -137,6 +137,10 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-AI_API_KEY = os.getenv('AI_API_KEY', 'your-siliconflow-apikey')
-AI_API_BASE = os.getenv('AI_API_BASE', 'https://api.siliconflow.cn/v1')
+AI_API_KEY = os.getenv('SILICONFLOW_API_KEY', os.getenv('AI_API_KEY', 'your-siliconflow-apikey'))
+AI_API_BASE = os.getenv('SILICONFLOW_API_URL', os.getenv('AI_API_BASE', 'https://api.siliconflow.cn/v1'))
 AI_MODEL = os.getenv('AI_MODEL', 'deepseek-ai/DeepSeek-V3.1-Terminus')
+# 可选：添加其他AI参数
+AI_TEMPERATURE = float(os.getenv('AI_TEMPERATURE', '0.7'))
+AI_MAX_TOKENS = int(os.getenv('AI_MAX_TOKENS', '5000'))
+AI_TOP_P = float(os.getenv('AI_TOP_P', '0.9'))
