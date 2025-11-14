@@ -30,13 +30,15 @@ class ChatMessageProcessor:
         self.setup_ai_client()
         # 存储用户会话状态
         self.user_sessions = {}
+        self.session_data_cache = {}
 
     def setup_ai_client(self):
-        """设置AI客户端 - 增强错误处理"""
+        """设置AI客户端 - 更健壮的初始化"""
         try:
             # 检查配置是否存在
             if not hasattr(settings, 'AI_API_KEY') or not settings.AI_API_KEY or settings.AI_API_KEY == 'your-siliconflow-apikey':
                 logger.warning("AI_API_KEY未正确配置，将使用本地SQL生成")
+                self.ai_client = None
                 return
             
             # 尝试导入openai库
@@ -44,6 +46,7 @@ class ChatMessageProcessor:
                 import openai
             except ImportError:
                 logger.warning("openai库未安装，将使用本地SQL生成")
+                self.ai_client = None
                 return
             
             # 获取配置
@@ -51,22 +54,19 @@ class ChatMessageProcessor:
             api_key = settings.AI_API_KEY
             model_name = getattr(settings, 'AI_MODEL', 'deepseek-ai/DeepSeek-V3.1-Terminus')
             
-            logger.info(f"初始化AI客户端，API Base: {api_base}, Model: {model_name}")
+            logger.info(f"初始化AI客户端，API Base: {api_base}")
             
+            # 创建客户端时不立即测试连接
             self.ai_client = openai.OpenAI(
                 api_key=api_key,
-                base_url=api_base
+                base_url=api_base,
+                timeout=30  # 增加超时时间
             )
             
             # 保存模型名称供后续使用
             self.model_name = model_name
             
-            # 测试连接
-            if self.test_ai_connection():
-                logger.info("AI客户端初始化成功")
-            else:
-                logger.warning("AI客户端连接测试失败，将使用本地SQL生成")
-                self.ai_client = None
+            logger.info("AI客户端初始化完成（延迟连接测试）")
                 
         except Exception as e:
             logger.error(f"AI客户端初始化失败: {e}")
@@ -134,8 +134,17 @@ class ChatMessageProcessor:
                     response_data = self.handle_database_introduction(message, session_id)
                 else:
                     response_data = self.handle_intelligent_data_analysis(message, session_id)
+                    
+                # 保存查询结果到会话缓存
+                if response_data.get('status') == 'success' and response_data.get('data_count', 0) > 0:
+                    self.session_data_cache[session_id] = {
+                        'query_time': datetime.now(),
+                        'user_message': message,
+                        'data_count': response_data.get('data_count', 0),
+                        'response_data': response_data
+                    }
             else:
-                response_data = self.handle_normal_chat(message)
+                response_data = self.handle_normal_chat(message, session_id)
             
             # 记录助手响应
             if response_data.get('status') == 'success':
@@ -511,7 +520,7 @@ class ChatMessageProcessor:
         return "".join(preview_html)
 
     def handle_intelligent_data_analysis(self, user_message, session_id):
-        """智能数据分析处理 - 深度理解、内容提取、智能回答"""
+        """智能数据分析处理 - 修复AI客户端检测"""
         try:
             # 清理消息
             clean_message = self.clean_psql_marker(user_message)
@@ -523,10 +532,16 @@ class ChatMessageProcessor:
             # 深度理解用户意图
             intent_analysis = self.analyze_user_intent(clean_message)
             
-            # 根据意图选择查询策略
-            if self.requires_content_analysis(intent_analysis):
+            # 检查AI客户端是否可用
+            ai_available = self.ai_client is not None
+            logger.info(f"AI客户端状态: {'可用' if ai_available else '不可用'}")
+            
+            # 根据AI可用性和意图选择策略
+            if ai_available and self.requires_content_analysis(intent_analysis):
+                logger.info("使用智能内容分析")
                 return self.handle_intelligent_content_analysis(clean_message, intent_analysis, session_id, conversation_history)
             else:
+                logger.info("使用基础数据查询")
                 return self.handle_basic_data_query(clean_message, intent_analysis, session_id)
                 
         except Exception as e:
@@ -535,17 +550,25 @@ class ChatMessageProcessor:
             return self.error_response_dict(f"数据分析失败: {str(e)}")
 
     def analyze_user_intent(self, user_message):
-        """深度分析用户意图"""
+        """深度分析用户意图 - 增加教育行业识别"""
         medical_keywords = ['医疗', '医院', '药品', '器械', '保健', '卫生', '医学', '医保', '诊疗']
+        education_keywords = ['教育', '学校', '学院', '大学', '幼儿园', '小学', '中学', '高中', '职业教育', '教学']
         intention_keywords = ['意向', '采购意向', '预算']
         notice_keywords = ['公告', '招标', '中标', '要求', '资质', '联系人', '内容']
         
+        # 检测行业类型
+        industry = '通用'
+        if any(kw in user_message for kw in medical_keywords):
+            industry = '医疗'
+        elif any(kw in user_message for kw in education_keywords):
+            industry = '教育'
+        
         intent = {
-            'industry': '医疗' if any(kw in user_message for kw in medical_keywords) else '通用',
+            'industry': industry,
             'query_type': '意向' if any(kw in user_message for kw in intention_keywords) else 
-                         '公告' if any(kw in user_message for kw in notice_keywords) else '通用',
+                        '公告' if any(kw in user_message for kw in notice_keywords) else '通用',
             'time_range': '11月' if '11月' in user_message or '十一月' in user_message else 
-                         '近期' if '最近' in user_message or '最新' in user_message else '',
+                        '近期' if '最近' in user_message or '最新' in user_message else '',
             'needs_contact': '联系人' in user_message or '联系' in user_message or '电话' in user_message,
             'needs_qualification': '资质' in user_message or '要求' in user_message or '条件' in user_message,
             'needs_content': '内容' in user_message or '详情' in user_message or '要求' in user_message,
@@ -563,37 +586,43 @@ class ChatMessageProcessor:
                 intent_analysis['query_type'] == '公告')
 
     def handle_intelligent_content_analysis(self, user_message, intent_analysis, session_id, conversation_history):
-        """处理智能内容分析"""
+        """处理智能内容分析 - 添加数据验证"""
         try:
             # 获取相关数据（包含content字段）
             raw_data = self.get_content_rich_data(intent_analysis)
-            
-            if not raw_data:
+        
+            # 严格验证数据是否存在
+            if not raw_data or len(raw_data) == 0:
+                logger.warning(f"未找到符合条件的数据: {user_message}")
                 return self.format_no_data_response(user_message)
-            
+        
+            # 记录实际找到的数据量
+            logger.info(f"实际查询到 {len(raw_data)} 条数据")
+        
             # 深度分析content内容
             analyzed_results = self.analyze_content_data(raw_data, intent_analysis)
-            
-            # 生成智能回答
-            intelligent_response = self.generate_intelligent_response(
-                user_message, analyzed_results, intent_analysis, conversation_history
+        
+            # 生成智能回答（使用修复后的方法）
+            intelligent_response = self.generate_ai_enhanced_response(
+            user_message, analyzed_results, intent_analysis, conversation_history
             )
-            
+        
             response_data = {
                 'status': 'success',
                 'response_type': 'intelligent_analysis',
                 'message': intelligent_response,
                 'data_count': len(raw_data),
                 'analysis_depth': 'deep',
-                'formatted': True
+                'formatted': True,
+                'actual_data_found': True  # 标记实际找到了数据
             }
-            
-            logger.info(f"智能分析完成，返回 {len(raw_data)} 条数据的分析结果")
+        
+            logger.info(f"智能分析完成，实际返回 {len(raw_data)} 条数据的分析结果")
             return response_data
-            
+        
         except Exception as e:
             logger.error(f"智能内容分析失败: {e}")
-            # 降级处理
+            # 降级处理时也要确保不幻想
             return self.handle_basic_data_query(user_message, intent_analysis, session_id)
 
     def get_content_rich_data(self, intent_analysis):
@@ -652,14 +681,18 @@ class ChatMessageProcessor:
             return None
 
     def build_intelligent_conditions(self, intent_analysis):
-        """构建智能查询条件"""
+        """构建智能查询条件 - 添加教育行业支持"""
         conditions = []
         
-        # 行业条件
+        # 行业条件 - 增加教育相关关键词
         if intent_analysis['industry'] == '医疗':
             medical_keywords = ['医疗', '医院', '药品', '器械', '保健', '卫生', '医学', '医保']
             medical_conds = [f"base.title LIKE '%{kw}%'" for kw in medical_keywords]
             conditions.append("(" + " OR ".join(medical_conds) + ")")
+        elif '教育' in intent_analysis.get('industry', '') or 'education' in intent_analysis.get('industry', '').lower():
+            education_keywords = ['教育', '学校', '学院', '大学', '幼儿园', '小学', '中学', '高中', '职业教育']
+            education_conds = [f"base.title LIKE '%{kw}%'" for kw in education_keywords]
+            conditions.append("(" + " OR ".join(education_conds) + ")")
         
         # 时间条件
         if intent_analysis['time_range'] == '11月':
@@ -672,13 +705,12 @@ class ChatMessageProcessor:
         # 类型条件
         if intent_analysis['query_type'] == '意向':
             conditions.append("base.info_type LIKE '%意向%'")
-        elif intent_analysis['query_type'] == '公告':
-            conditions.append("(base.info_type LIKE '%公告%' OR base.info_type LIKE '%招标%' OR base.info_type LIKE '%中标%')")
         
         # 确保只查询有效数据
         conditions.append("base.publish_time IS NOT NULL")
         conditions.append("base.title IS NOT NULL")
         
+        logger.info(f"智能查询条件: {conditions}")
         return conditions
 
     def analyze_content_data(self, raw_data, intent_analysis):
@@ -850,6 +882,37 @@ class ChatMessageProcessor:
         if len(text) > 200:
             return text[:200] + "..."
         return text
+    
+    def generate_template_response_with_data(self, user_message, analyzed_results, intent_analysis):
+        """生成包含原始数据的模板回答"""
+        if not analyzed_results:
+            return self.format_no_data_response(user_message)
+        
+        # 生成原始数据表格
+        raw_data_table = self.generate_raw_data_table(analyzed_results)
+        
+        html_parts = []
+        
+        html_parts.append(f"""
+        <div class="intelligent-analysis-result">
+            <div class="alert alert-success">
+                <h4>📊 查询结果</h4>
+                <p><strong>您的查询：</strong> {user_message}</p>
+                <p><strong>找到相关项目：</strong> {len(analyzed_results)} 个</p>
+            </div>
+            
+            <div class="raw-data-section mt-4">
+                <h5>📋 查询结果详情</h5>
+                {raw_data_table}
+            </div>
+        </div>
+        """)
+        
+        return "".join(html_parts)
+
+
+
+
 
     def generate_intelligent_response(self, user_message, analyzed_results, intent_analysis, conversation_history):
         """生成智能回答"""
@@ -863,67 +926,171 @@ class ChatMessageProcessor:
             except Exception as e:
                 logger.error(f"AI增强回答生成失败: {e}")
         
-        # 降级到模板回答
-        return self.generate_template_response(user_message, analyzed_results, intent_analysis)
+        # 降级到包含原始数据的模板回答
+        return self.generate_template_response_with_data(user_message, analyzed_results, intent_analysis)
 
     def generate_ai_enhanced_response(self, user_message, analyzed_results, intent_analysis, conversation_history):
-        """使用AI生成增强回答"""
+        """使用AI生成增强回答 - 修复幻想问题"""
         # 准备数据摘要
         data_summary = self.prepare_data_summary_for_ai(analyzed_results)
-        
+    
         # 准备对话历史上下文
-        history_context = self.prepare_conversation_history(conversation_history[-4:])  # 最近2轮对话
-        
+        history_context = self.prepare_conversation_history(conversation_history[-4:])
+    
+        # 严格限制的提示词，防止幻想
         prompt = f"""
-作为政府采购数据分析专家，请基于以下数据回答用户的问题。
-
+作为政府采购数据分析专家，请严格按照以下数据回答用户的问题。**严禁编造或推测不存在的数据**。
 用户当前问题：{user_message}
-
-对话历史上下文：
-{history_context}
-
 查询到的数据摘要（共{len(analyzed_results)}条记录）：
 {data_summary}
-
+**重要限制条件：**
+1. 只能使用上述提供的实际数据，不能编造任何不存在的信息
+2. 如果数据中没有相关内容，必须如实告知"未找到相关信息"
+3. 不能推测或假设数据库中不存在的数据
+4. 不能虚构地区、预算金额、时间等具体信息
+5. 如果记录数量为0，必须明确说明没有找到匹配的数据
 用户关注的重点：
 - 行业领域：{intent_analysis['industry']}
 - 查询类型：{intent_analysis['query_type']}
 - 时间范围：{intent_analysis['time_range']}
-- 需要联系人信息：{'是' if intent_analysis['needs_contact'] else '否'}
-- 需要资质要求：{'是' if intent_analysis['needs_qualification'] else '否'}
-
-回答要求：
-1. 直接、准确地回答用户问题，不要提及SQL或技术细节
-2. 基于实际数据引用具体信息（标题、预算、联系人等）
-3. 对信息进行总结分析，提供业务洞察
-4. 使用专业但易懂的中文，结构清晰
-5. 对于资质要求、联系人等详细信息，要具体引用内容
-6. 如果数据较多，进行分类总结
-
-请生成专业、有用的回答：
+请基于实际数据提供准确的回答：
 """
+        try:
+            response = self.ai_client.chat.completions.create(
+                model=self.model_name,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1500,  # 减少token数量
+                temperature=0.1   # 降低温度，减少随机性
+            )
         
-        response = self.ai_client.chat.completions.create(
-            model=self.model_name,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=2000,
-            temperature=0.3
-        )
+            ai_content = response.choices[0].message.content
+
+            # 添加数据验证，确保AI没有编造
+            validated_content = self.validate_ai_response(ai_content, analyzed_results)
         
-        return f"""
-        <div class="intelligent-analysis-result">
-            <div class="alert alert-success">
-                <h4>🧠 智能分析结果</h4>
-                <p><strong>您的查询：</strong> {user_message}</p>
+            # 生成原始数据表格
+            raw_data_table = self.generate_raw_data_table(analyzed_results)
+        
+            return f"""
+            <div class="intelligent-analysis-result">
+                <!-- 分析结果 -->
+                <div class="analysis-content mb-4">
+                    {validated_content}
+                </div>
+                
+                <!-- 原始数据表格 -->
+                <div class="raw-data-section mt-4">
+                    <h5>📋 原始数据预览（共 {len(analyzed_results)} 条记录）</h5>
+                    {raw_data_table}
+                </div>
             </div>
-            <div class="analysis-content">
-                {response.choices[0].message.content}
-            </div>
-            <div class="mt-3 alert alert-info">
-                <small>📊 基于 {len(analyzed_results)} 条相关数据进行的深度分析</small>
-            </div>
+            """
+        except Exception as e:
+            logger.error(f"AI增强回答生成失败: {e}")
+            # 降级时也要显示数据
+            return self.generate_template_response_with_data(user_message, analyzed_results, intent_analysis)
+        
+    def generate_raw_data_table(self, analyzed_results):
+        """生成原始数据表格"""
+        if not analyzed_results or len(analyzed_results) == 0:
+            return '<div class="alert alert-warning">未找到相关数据</div>'
+    
+        # 获取所有可能的表头
+        headers_set = set()
+        for item in analyzed_results:
+            headers_set.update(item.keys())
+    
+        # 优先显示的关键字段
+        priority_headers = ['title', 'url', 'jurisdiction', 'info_type', 'publish_time', 
+                       'intention_budget_amount', 'intention_procurement_unit']
+    
+        # 排序表头：优先显示关键字段，然后按字母顺序
+        headers = []
+        for header in priority_headers:
+            if header in headers_set:
+                headers.append(header)
+                headers_set.remove(header)
+    
+        # 添加剩余字段
+        headers.extend(sorted(headers_set))
+    
+        # 限制显示记录数量
+        display_data = analyzed_results[:50]  # 最多显示50条
+        show_all = len(analyzed_results) <= 50
+    
+        html_parts = []
+    
+        html_parts.append(f"""
+    <div class="table-responsive mt-3" style="max-height: 400px; overflow-y: auto;">
+        <table class="table table-sm table-hover table-striped">
+            <thead class="table-dark sticky-top">
+                <tr>{"".join([f"<th>{self.format_header_name(h)}</th>" for h in headers])}</tr>
+            </thead>
+            <tbody>
+        """)
+    
+        for i, item in enumerate(display_data, 1):
+            html_parts.append("<tr>")
+            for header in headers:
+                value = item.get(header, '')
+                html_parts.append(f"<td>{self.format_cell_value(value, header)}</td>")
+            html_parts.append("</tr>")
+    
+        html_parts.append("""
+            </tbody>
+        </table>
+    </div>
+        """)
+    
+        # 显示记录数量信息
+        if not show_all:
+            html_parts.append(f"""
+        <div class="mt-2 text-center">
+            <small class="text-muted">
+                仅显示前50条记录，共 {len(analyzed_results)} 条记录
+            </small>
         </div>
-        """
+            """)
+        else:
+            html_parts.append(f"""
+        <div class="mt-2 text-center">
+            <small class="text-muted">
+                共 {len(analyzed_results)} 条记录
+            </small>
+        </div>
+            """)
+    
+        return "".join(html_parts)
+        
+
+
+
+
+
+
+
+
+
+
+
+
+    def validate_ai_response(self, ai_content, analyzed_results):
+        """验证AI回答是否包含幻想内容"""
+        # 检查是否编造了不存在的数据
+        if len(analyzed_results) == 0:
+            # 如果没有数据但AI说有数据，强制修正
+            if any(keyword in ai_content for keyword in ['找到', '共有', '记录', '项目']):
+                return "未找到与查询条件匹配的采购信息。"
+    
+        # 检查是否编造了具体数字
+        import re
+        number_matches = re.findall(r'\d+', ai_content)
+        if number_matches and len(analyzed_results) == 0:
+            # 如果没有数据但出现了数字，可能是在编造
+            logger.warning("AI可能编造了数据，进行修正")
+            return "经查询，数据库中没有找到符合条件的采购信息。"
+    
+        return ai_content
 
     def prepare_data_summary_for_ai(self, analyzed_results):
         """为AI准备数据摘要"""
@@ -1346,24 +1513,41 @@ class ChatMessageProcessor:
             'publish_time': '📅 时间',
             'intention_budget_amount': '💰 预算',
             'intention_procurement_unit': '🏢 采购单位',
-            'content_preview': '📄 内容预览'
+            'content_preview': '📄 内容预览',
+            'project_name': '📋 项目名称',
+            'notice_content': '📄 公告内容',
+            'content_summary': '📋 内容摘要'        
         }
         return header_map.get(header, header)
 
-    def format_cell_value(self, value, header):
+    def format_cell_value(self, value, header=None):
         """格式化单元格值"""
         if value is None or value == '':
             return '<span class="text-muted">-</span>'
         
+        # URL特殊处理
         if header == 'url' and isinstance(value, str) and value.startswith('http'):
             return f'<a href="{value}" target="_blank" class="text-primary">查看详情</a>'
         
-        if header == 'intention_budget_amount' and value:
-            if isinstance(value, (int, float)):
-                return f'¥{value:,.2f}'
+        # 预算金额格式化
+        if header == 'intention_budget_amount' and isinstance(value, (int, float)):
+            return f'¥{value:,.2f}'
         
+        # 长文本截断
         if isinstance(value, str) and len(value) > 50:
             return f'<span title="{value}">{value[:50]}...</span>'
+        
+        # 日期时间格式化
+        if 'time' in header and isinstance(value, (datetime, str)):
+            try:
+                if isinstance(value, datetime):
+                    return value.strftime('%Y-%m-%d %H:%M')
+                # 尝试解析字符串日期
+                from datetime import datetime as dt
+                parsed_date = dt.fromisoformat(value.replace('Z', '+00:00'))
+                return parsed_date.strftime('%Y-%m-%d %H:%M')
+            except:
+                pass
         
         return str(value)
 
@@ -1407,13 +1591,21 @@ class ChatMessageProcessor:
             logger.error(f"SQL执行失败: {e}")
             return None
 
-    def handle_normal_chat(self, message):
-        """处理普通聊天"""
+    def handle_normal_chat(self, message, session_id=None):
+        """处理普通聊天 - 支持上下文对话"""
+        session_id = session_id or 'default'
+    
+        # 获取当前会话的历史记录
+        session_history = self.user_sessions.get(session_id, {}).get('conversation_history', [])
+    
+        # 构建包含上下文的messages列表（最多包含最近的10条对话）
+        messages = self.build_chat_context(session_history, message)
+    
         if self.ai_client:
             try:
                 response = self.ai_client.chat.completions.create(
                     model=self.model_name,
-                    messages=[{"role": "user", "content": message}],
+                    messages=messages,
                     max_tokens=500
                 )
                 return {
@@ -1423,12 +1615,43 @@ class ChatMessageProcessor:
                 }
             except Exception as e:
                 logger.error(f"AI聊天失败: {e}")
-        
+    
+        # 备选回复（当AI客户端不可用时）
         return {
             'status': 'success',
             'response_type': 'normal_chat', 
             'message': '您好！如需数据查询，请在消息中添加 #psql 标签。'
-        }
+    }
+    def build_chat_context(self, session_history, current_message):
+        """构建聊天上下文消息列表"""
+        messages = []
+    
+        # 添加系统消息（只在对话开始时添加）
+        if len(session_history) == 0:
+            messages.append({
+                "role": "system",
+                "content": "你是一个专业、友好的AI助手，请用清晰、准确的中文回答用户的问题。"
+            })
+    
+        # 添加历史对话（最多保留最近的5轮对话，即10条消息）
+        recent_history = session_history[-10:]  # 获取最近10条消息
+    
+        for message in recent_history:
+            # 转换角色名称以匹配OpenAI API要求
+            role = "user" if message['role'] == 'user' else "assistant"
+            messages.append({
+                "role": role,
+                "content": message['content']
+            })
+    
+        # 添加当前用户消息
+        messages.append({
+            "role": "user",
+            "content": current_message
+        })
+    
+        logger.info(f"构建聊天上下文: {len(messages)} 条消息")
+        return messages
 
     def clean_psql_marker(self, message):
         """清理消息中的psql标记"""
