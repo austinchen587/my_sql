@@ -550,3 +550,85 @@ body {
 #session-list::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
 }
+
+
+/* HTML内容的样式优化 */
+
+.message-content.html-content {
+    max-width: 100%;
+}
+
+.message-html {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+
+/* AI分析结果的样式优化 */
+
+.intelligent-analysis-result {
+    max-width: 100%;
+    font-size: 0.9rem;
+}
+
+.intelligent-analysis-result h4 {
+    color: #2c3e50;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.intelligent-analysis-result .alert-info {
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+    color: #0c5460;
+}
+
+.intelligent-analysis-result pre {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 0.25rem;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+}
+
+.intelligent-analysis-result table {
+    font-size: 0.8rem;
+}
+
+.intelligent-analysis-result .table-responsive {
+    border-radius: 0.25rem;
+}
+
+
+/* 表格样式优化 */
+
+.message-html table {
+    width: 100%;
+    font-size: 0.8rem;
+}
+
+.message-html table th {
+    background-color: #e9ecef;
+    font-weight: 600;
+}
+
+.message-html table td {
+    vertical-align: top;
+}
+
+
+/* 响应式调整 */
+
+@media (max-width: 768px) {
+    .intelligent-analysis-result {
+        font-size: 0.8rem;
+    }
+    .message-html table {
+        font-size: 0.7rem;
+    }
+    .intelligent-analysis-result pre {
+        font-size: 0.75rem;
+        padding: 0.5rem;
+    }
+}

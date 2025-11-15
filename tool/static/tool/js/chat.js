@@ -73,26 +73,35 @@ function initializeChat() {
 
     function createMessageElement(text, type, isFormatted = false) {
         console.log(`📝 创建消息元素，类型: ${type}`);
-
         const messageElement = document.createElement('div');
         messageElement.className = `message ${type}`;
-
-        const displayText = isFormatted ? text : escapeHtml(text);
-
+        let displayText;
+        if (isFormatted) {
+            // AI返回的HTML内容直接显示
+            displayText = text;
+        } else if (type === 'sent') {
+            // 用户消息进行HTML转义
+            displayText = escapeHtml(text).replace(/\n/g, '<br>');
+        } else {
+            // AI普通消息进行HTML转义和换行处理
+            displayText = escapeHtml(text).replace(/\n/g, '<br>');
+        }
+        // 如果是AI返回的HTML内容，添加特殊样式类
+        const isHtmlContent = isFormatted && (text.includes('<div') || text.includes('<table'));
+        const contentClass = isHtmlContent ? 'html-content' : '';
         messageElement.innerHTML = `
-            <div class="message-avatar bg-${type === 'sent' ? 'primary' : 'success'} rounded-circle">
-                <span>${type === 'sent' ? '👤' : '🤖'}</span>
-            </div>
-            <div class="message-content">
-                <div class="message-sender">${type === 'sent' ? '您' : 'AI助手'}</div>
-                <div class="message-text">${displayText}</div>
-                <div class="message-time">${new Date().toLocaleTimeString('zh-CN', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                })}</div>
-            </div>
-        `;
-
+        <div class="message-avatar bg-${type === 'sent' ? 'primary' : 'success'} rounded-circle">
+            <span>${type === 'sent' ? '👤' : '🤖'}</span>
+        </div>
+        <div class="message-content ${contentClass}">
+            <div class="message-sender">${type === 'sent' ? '您' : 'AI助手'}</div>
+            <div class="message-text">${displayText}</div>
+            <div class="message-time">${new Date().toLocaleTimeString('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit'
+            })}</div>
+        </div>
+    `;
         messageArea.appendChild(messageElement);
         messageArea.scrollTop = messageArea.scrollHeight;
         console.log('✅ 消息元素添加完成');

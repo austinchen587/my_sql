@@ -234,37 +234,63 @@ class HistoryManager {
     addHistoryMessage(message, isNotice = false) {
         const messageArea = document.getElementById('message-area');
         if (!messageArea) return;
-
         const messageElement = document.createElement('div');
         const type = message.role === 'user' ? 'sent' : 'received';
         const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
-
         if (isNotice) {
             messageElement.className = 'message notice';
             messageElement.innerHTML = `
-                <div class="message-content text-center">
-                    <div class="message-text text-muted">
-                        <i class="bi bi-info-circle"></i> ${message.content}
-                    </div>
+            <div class="message-content text-center">
+                <div class="message-text text-muted">
+                    <i class="bi bi-info-circle"></i> ${message.content}
                 </div>
-            `;
+            </div>
+        `;
         } else {
             messageElement.className = `message ${type}`;
-            messageElement.innerHTML = `
-                <div class="message-avatar bg-${type === 'sent' ? 'primary' : 'success'} rounded-circle">
-                    <span>${type === 'sent' ? '👤' : '🤖'}</span>
-                </div>
-                <div class="message-content">
-                    <div class="message-sender">${type === 'sent' ? '您' : 'AI助手'}</div>
-                    <div class="message-text">${this.escapeHtml(message.content)}</div>
-                    <div class="message-time">${timestamp.toLocaleTimeString('zh-CN', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    })}</div>
-                </div>
-            `;
-        }
 
+            // 处理消息内容
+            let displayContent = message.content;
+            let isHtmlContent = false;
+
+            // 检查是否为HTML内容
+            if (typeof displayContent === 'string') {
+                // 检查是否包含HTML标签或特殊格式
+                if (displayContent.includes('<div') ||
+                    displayContent.includes('<table') ||
+                    displayContent.includes('<h4') ||
+                    displayContent.includes('<pre') ||
+                    displayContent.includes('class="')) {
+                    isHtmlContent = true;
+
+                    // 清除多余的换行和空格，确保HTML格式正确
+                    displayContent = displayContent.trim();
+
+                    // 包装HTML内容，确保样式统一
+                    if (!displayContent.includes('class="message-html"')) {
+                        displayContent = `<div class="message-html">${displayContent}</div>`;
+                    }
+                } else {
+                    // 普通文本内容，进行HTML转义
+                    displayContent = this.escapeHtml(displayContent);
+                    // 保留换行
+                    displayContent = displayContent.replace(/\n/g, '<br>');
+                }
+            }
+            messageElement.innerHTML = `
+            <div class="message-avatar bg-${type === 'sent' ? 'primary' : 'success'} rounded-circle">
+                <span>${type === 'sent' ? '👤' : '🤖'}</span>
+            </div>
+            <div class="message-content ${isHtmlContent ? 'html-content' : ''}">
+                <div class="message-sender">${type === 'sent' ? '您' : 'AI助手'}</div>
+                <div class="message-text">${displayContent}</div>
+                <div class="message-time">${timestamp.toLocaleTimeString('zh-CN', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                })}</div>
+            </div>
+        `;
+        }
         messageArea.appendChild(messageElement);
     }
 
