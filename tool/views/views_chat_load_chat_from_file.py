@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 @csrf_exempt
 @require_http_methods(["POST"])
 def load_chat_from_file(request):
-    """从文件加载聊天记录 - 增加详细日志"""
+    """从文件加载聊天记录 - 支持多种文件格式"""
     logger.info("📂 从文件加载聊天记录")
     try:
         if request.content_type == 'application/json':
@@ -31,50 +31,57 @@ def load_chat_from_file(request):
         
         session_id = data.get('session_id', 'default')
         
-        # 从文件加载的逻辑
-        file_path = f"D:/code/localtxt/chat_session_{session_id}.json"
+        # 尝试两种文件格式
+        file_paths = [
+            f"D:/code/localtxt/chat_session_{session_id}.json",  # 前端格式
+            f"D:/code/localtxt/{session_id}_conversation.json"    # 后端格式
+        ]
         
-        try:
-            if os.path.exists(file_path):
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    session_data = json.load(f)
-                
-                # 兼容新旧数据格式
-                if 'messages' in session_data:
-                    messages = session_data['messages']
-                else:
-                    # 旧格式兼容
-                    messages = session_data.get('conversation_history', [])
-                
-                logger.info(f"✅ 从文件加载聊天记录成功: {file_path}")
-                return JsonResponse({
-                    'status': 'success',
-                    'session_id': session_id,
-                    'messages': messages,
-                    'last_updated': session_data.get('last_updated'),
-                    'message_count': len(messages),
-                    'metadata': session_data.get('metadata', {})
-                })
+        session_data = None
+        loaded_file_path = None
+        
+        for file_path in file_paths:
+            try:
+                if os.path.exists(file_path):
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        session_data = json.load(f)
+                    loaded_file_path = file_path
+                    logger.info(f"✅ 从文件加载聊天记录成功: {file_path}")
+                    break
+            except Exception as e:
+                logger.warning(f"⚠️ 无法加载文件 {file_path}: {e}")
+                continue
+        
+        if session_data:
+            # 兼容不同的数据格式
+            if 'messages' in session_data:
+                messages = session_data['messages']
+            elif 'conversation_history' in session_data:
+                messages = session_data['conversation_history']
             else:
-                logger.info("📝 会话文件不存在，创建新的空会话")
-                return JsonResponse({
-                    'status': 'success',
-                    'session_id': session_id,
-                    'messages': [],
-                    'message_count': 0,
-                    'message': '会话文件不存在，创建新的空会话'
-                })
-                
-        except Exception as e:
-            logger.error(f"❌ 加载文件失败: {e}")
+                messages = []
+            
             return JsonResponse({
-                'status': 'error',
-                'message': f'加载失败: {str(e)}'
-            }, status=500)
+                'status': 'success',
+                'session_id': session_id,
+                'messages': messages,
+                'last_updated': session_data.get('last_updated'),
+                'message_count': len(messages),
+                'file_path': loaded_file_path
+            })
+        else:
+            logger.info("📝 会话文件不存在，创建新的空会话")
+            return JsonResponse({
+                'status': 'success',
+                'session_id': session_id,
+                'messages': [],
+                'message_count': 0,
+                'message': '会话文件不存在，创建新的空会话'
+            })
             
     except Exception as e:
         logger.error(f"❌ 加载聊天记录失败: {e}")
         return JsonResponse({
             'status': 'error',
-            'message': f'处理请求失败: {str(e)}'
+            'message': f'加载失败: {str(e)}'
         }, status=500)

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 @require_http_methods(["GET"])
 def list_sessions(request):
-    """列出所有会话文件 - 增加错误处理和文件修复功能"""
+    """列出所有会话文件 - 支持多种文件格式"""
     logger.info("📋 列出所有会话文件")
     try:
         sessions_dir = "D:/code/localtxt"
@@ -18,7 +18,11 @@ def list_sessions(request):
         
         if os.path.exists(sessions_dir):
             for filename in os.listdir(sessions_dir):
-                if filename.startswith("chat_session_") and filename.endswith(".json"):
+                # 支持两种文件格式：
+                # 1. chat_session_xxx.json (前端格式)
+                # 2. xxx_conversation.json (后端自动保存格式)
+                if (filename.startswith("chat_session_") and filename.endswith(".json")) or \
+                   (filename.endswith("_conversation.json")):
                     file_path = os.path.join(sessions_dir, filename)
                     
                     session_data = None
@@ -37,19 +41,32 @@ def list_sessions(request):
                             continue
                     
                     # 提取会话ID
-                    session_id = session_data.get('session_id', 
-                                                filename.replace("chat_session_", "").replace(".json", ""))
+                    if filename.startswith("chat_session_"):
+                        session_id = filename.replace("chat_session_", "").replace(".json", "")
+                    else:  # xxx_conversation.json
+                        session_id = filename.replace("_conversation.json", "")
                     
                     # 计算实际消息数量
-                    messages = session_data.get('messages', [])
-                    actual_message_count = len(messages)
+                    if 'messages' in session_data:
+                        actual_message_count = len(session_data.get('messages', []))
+                    elif 'conversation_history' in session_data:
+                        actual_message_count = len(session_data.get('conversation_history', []))
+                    else:
+                        actual_message_count = 0
+                    
+                    # 获取最后更新时间
+                    last_updated = session_data.get('last_updated')
+                    if not last_updated and 'conversation_history' in session_data and session_data['conversation_history']:
+                        # 使用最新消息的时间戳
+                        last_message = session_data['conversation_history'][-1]
+                        last_updated = last_message.get('timestamp')
                     
                     sessions.append({
                         'session_id': session_id,
                         'filename': filename,
                         'message_count': actual_message_count,
-                        'last_updated': session_data.get('last_updated'),
-                        'created': session_data.get('created', session_data.get('last_updated')),
+                        'last_updated': last_updated,
+                        'created': session_data.get('created', session_data.get('last_updated', last_updated)),
                         'file_size': os.path.getsize(file_path)
                     })
         
