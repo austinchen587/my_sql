@@ -452,3 +452,101 @@ body {
         margin: 0.5rem 0;
     }
 }
+
+
+/* tool/static/tool/css/chat.css */
+
+
+/* 现有样式保持不变，添加以下新样式 */
+
+
+/* 历史对话面板样式 */
+
+.session-item {
+    border: none;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.session-item:hover {
+    background-color: #f8f9fa;
+}
+
+.session-item.active {
+    background-color: #e3f2fd;
+    border-left: 4px solid #0d6efd;
+}
+
+.session-item h6 {
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+}
+
+.session-item small {
+    font-size: 0.75rem;
+}
+
+
+/* 移动端响应式 */
+
+@media (max-width: 768px) {
+    .col-md-3 {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 280px;
+        z-index: 1000;
+        background: white;
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+        overflow-y: auto;
+    }
+    .col-md-3.d-none {
+        transform: translateX(-100%);
+    }
+}
+
+
+/* 通知消息样式 */
+
+.message.notice {
+    justify-content: center;
+    margin: 10px 0;
+}
+
+.message.notice .message-content {
+    background: transparent;
+    border: none;
+    padding: 5px 0;
+}
+
+.message.notice .message-text {
+    font-style: italic;
+    color: #6c757d;
+}
+
+
+/* 滚动条样式 */
+
+#session-list {
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+}
+
+#session-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+#session-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+#session-list::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 2px;
+}
+
+#session-list::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
