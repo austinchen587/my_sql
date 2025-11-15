@@ -10,9 +10,8 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- 自定义CSS -->
     <link rel="stylesheet" href="{% static 'tool/css/chat.css' %}">
-    <!-- Markdown渲染库 -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@2.4.0/dist/purify.min.js"></script>
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
 </head>
 
 <body>
@@ -121,8 +120,6 @@
         </div>
     </div>
 
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <!-- Bootstrap 5 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -146,29 +143,55 @@
             }
         });
 
-        // 移动端历史面板切换 - 修复语法错误
+        // 移动端历史面板切换 - 优化版本（移除旧的，使用下面新的）
         const toggleHistoryBtn = document.getElementById('toggle-history');
         if (toggleHistoryBtn) {
             toggleHistoryBtn.addEventListener('click', function() {
                 const historyPanel = document.querySelector('.col-md-3');
                 if (historyPanel) {
-                    historyPanel.classList.toggle('d-none');
+                    historyPanel.classList.toggle('show');
+                    // 添加遮罩层
+                    if (historyPanel.classList.contains('show')) {
+                        createOverlay();
+                    } else {
+                        removeOverlay();
+                    }
                 }
             });
         }
 
-        // 检查控制台是否有错误
-        window.addEventListener('error', function(e) {
-            console.error('页面错误:', e.error);
-        });
+        // 创建遮罩层
+        function createOverlay() {
+            const overlay = document.createElement('div');
+            overlay.id = 'mobile-overlay';
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+                z-index: 1040;
+                backdrop-filter: blur(5px);
+            `;
+            overlay.addEventListener('click', function() {
+                const historyPanel = document.querySelector('.col-md-3');
+                if (historyPanel) {
+                    historyPanel.classList.remove('show');
+                    removeOverlay();
+                }
+            });
+            document.body.appendChild(overlay);
+        }
 
-        // 调试信息
-        console.log('页面加载完成，检查元素...');
-        console.log('session-list:', document.getElementById('session-list'));
-        console.log('refresh-sessions:', document.getElementById('refresh-sessions'));
-    </script>
+        // 移除遮罩层
+        function removeOverlay() {
+            const overlay = document.getElementById('mobile-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
+        }
 
-    <script>
         // 复制SQL功能
         function copyToClipboard(button) {
             const sqlCode = button.nextElementSibling.querySelector('code').textContent;
@@ -182,6 +205,14 @@
                 }, 2000);
             });
         }
+
+        // 检查控制台是否有错误
+        window.addEventListener('error', function(e) {
+            console.error('页面错误:', e.error);
+        });
+
+        // 调试信息
+        console.log('页面加载完成，检查元素...');
     </script>
 
 
