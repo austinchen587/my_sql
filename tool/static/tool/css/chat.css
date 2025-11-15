@@ -632,3 +632,86 @@ body {
         padding: 0.5rem;
     }
 }
+
+
+/* 美化分析结果样式 */
+
+.intelligent-analysis-result {
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+.analysis-header {
+    border-radius: 10px 10px 0 0;
+}
+
+.analysis-body {
+    background: white;
+}
+
+.analysis-technical {
+    background: #f8f9fa !important;
+    border-top: 1px solid #dee2e6;
+}
+
+.analysis-content h3,
+.analysis-content h4,
+.analysis-content h5 {
+    color: #2c3e50;
+}
+
+.analysis-content ul {
+    padding-left: 1.5rem;
+}
+
+.analysis-content li {
+    margin-bottom: 0.5rem;
+    position: relative;
+}
+
+.analysis-content li:before {
+    content: "•";
+    color: #007bff;
+    font-weight: bold;
+    position: absolute;
+    left: -1rem;
+}
+
+.sql-code-container {
+    position: relative;
+}
+
+.copy-sql-btn {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    z-index: 10;
+}
+
+
+/* 会话分组样式 */
+
+.session-group-item {
+    transition: all 0.3s ease;
+    border-left: 4px solid #007bff;
+}
+
+.session-group-item:hover {
+    background-color: #f8f9fa;
+    transform: translateX(2px);
+}
+
+.session-group-item.active {
+    background-color: #e3f2fd;
+    border-left-color: #28a745;
+}
+
+.session-preview {
+    line-height: 1.4;
+}
+
+.session-preview small {
+    font-size: 0.8rem;
+}

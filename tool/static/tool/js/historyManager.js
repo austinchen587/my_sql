@@ -353,6 +353,223 @@ class HistoryManager {
         const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
         return csrfToken ? csrfToken.value : '';
     }
+
+
+    groupMessagesBySession(messages) {
+        console.log('📊 按会话分组消息，总数:', messages.length);
+
+        if (!messages || messages.length === 0) {
+            return [];
+        }
+
+        // 按用户-助手对话对分组
+        const sessions = [];
+        let currentSession = [];
+        let lastRole = null;
+
+        messages.forEach((message, index) => {
+            const currentRole = message.role;
+
+            // 如果是用户消息，开始新的会话
+            if (currentRole === 'user') {
+                // 如果当前会话不为空，保存之前的会话
+                if (currentSession.length > 0) {
+                    sessions.push([...currentSession]);
+                    currentSession = [];
+                }
+            }
+
+            // 添加到当前会话
+            currentSession.push(message);
+            lastRole = currentRole;
+        });
+
+        // 添加最后一个会话
+        if (currentSession.length > 0) {
+            sessions.push(currentSession);
+        }
+
+        console.log('🔢 分组结果:', sessions.length, '个会话');
+        return sessions;
+    }
+    renderSessions(sessions) {
+        const sessionList = document.getElementById('session-list');
+        if (!sessionList) return;
+        if (!sessions || sessions.length === 0) {
+            sessionList.innerHTML = `
+            <div class="text-center p-3 text-muted">
+                <i class="bi bi-inbox"></i>
+                <div>暂无历史对话</div>
+                <small>开始新的对话后会自动保存</small>
+            </div>
+        `;
+            return;
+        }
+        // 获取消息数据并分组
+        this.loadAndRenderGroupedSessions(sessions);
+    }
+    async loadAndRenderGroupedSessions(sessions) {
+        const sessionList = document.getElementById('session-list');
+
+        try {
+            // 加载默认会话的详细信息来获取消息
+            const response = await fetch('/load_chat/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken(),
+                },
+                body: JSON.stringify({ session_id: 'default' })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.status === 'success') {
+                    const messages = data.messages || [];
+                    const groupedSessions = this.groupMessagesBySession(messages);
+
+                    sessionList.innerHTML = groupedSessions.map((session, index) =>
+                        this.createSessionGroupItem(session, index)
+                    ).join('');
+
+                    return;
+                }
+            }
+        } catch (error) {
+            console.error('❌ 加载分组会话失败:', error);
+        }
+
+        // 备用：显示传统的会话列表
+        sessionList.innerHTML = sessions.map(session => this.createSessionItem(session)).join('');
+    }
+    createSessionGroupItem(sessionMessages, index) {
+        if (!sessionMessages || sessionMessages.length === 0) return '';
+
+        const firstMessage = sessionMessages[0];
+        const lastMessage = sessionMessages[sessionMessages.length - 1];
+        const userMessage = sessionMessages.find(msg => msg.role === 'user');
+        const assistantMessage = sessionMessages.find(msg => msg.role === 'assistant');
+
+        const userContent = userMessage ? this.extractPreviewText(userMessage.content) : '用户消息';
+        const assistantContent = assistantMessage ? this.extractPreviewText(assistantMessage.content) : 'AI回复';
+
+        const timestamp = firstMessage.timestamp ? new Date(firstMessage.timestamp) : new Date();
+        const timeAgo = this.formatTimeAgo(timestamp);
+
+        return `
+        <div class="list-group-item session-group-item" 
+             data-session-index="${index}" 
+             style="cursor: pointer; border-left: 4px solid #007bff;">
+            <div class="d-flex w-100 justify-content-between align-items-start">
+                <div class="flex-grow-1">
+                    <h6 class="mb-1">对话 ${index + 1}</h6>
+                    <div class="session-preview">
+                        <small class="text-primary fw-bold">您:</small>
+                        <small class="text-muted">${userContent.substring(0, 30)}...</small>
+                        <br>
+                        <small class="text-success fw-bold">AI:</small>
+                        <small class="text-muted">${assistantContent.substring(0, 30)}...</small>
+                    </div>
+                </div>
+                <small class="text-muted">${timeAgo}</small>
+            </div>
+            <div class="mt-1">
+                <small class="text-muted">
+                    ${timestamp.toLocaleString('zh-CN', { 
+                        month: 'short', 
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    })} • ${sessionMessages.length} 条消息
+                </small>
+            </div>
+        </div>
+    `;
+    }
+    extractPreviewText(htmlContent) {
+            // 提取纯文本预览
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlContent;
+            let text = tempDiv.textContent || tempDiv.innerText || '';
+
+            // 移除多余空格和换行
+            text = text.replace(/\s+/g, ' ').trim();
+
+            return text;
+        }
+        // 修改点击事件处理
+    bindEvents() {
+        const refreshBtn = document.getElementById('refresh-sessions');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                this.loadSessions();
+            });
+        }
+        // 点击会话项加载历史
+        document.addEventListener('click', (e) => {
+            const sessionItem = e.target.closest('.session-item');
+            if (sessionItem) {
+                const sessionId = sessionItem.dataset.sessionId;
+                this.loadChatHistory(sessionId);
+            }
+
+            // 新增：处理分组会话项点击
+            const sessionGroupItem = e.target.closest('.session-group-item');
+            if (sessionGroupItem) {
+                const sessionIndex = sessionGroupItem.dataset.sessionIndex;
+                this.loadSessionGroup(sessionIndex);
+            }
+        });
+    }
+    async loadSessionGroup(sessionIndex) {
+        console.log(`📂 加载会话组: ${sessionIndex}`);
+
+        try {
+            const response = await fetch('/load_chat/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken(),
+                },
+                body: JSON.stringify({ session_id: 'default' })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.status === 'success') {
+                    const messages = data.messages || [];
+                    const groupedSessions = this.groupMessagesBySession(messages);
+
+                    if (sessionIndex < groupedSessions.length) {
+                        const sessionMessages = groupedSessions[sessionIndex];
+                        this.displayChatHistory(sessionMessages);
+                        this.highlightActiveSessionGroup(sessionIndex);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('❌ 加载会话组失败:', error);
+            this.showNotification('加载对话失败', 'error');
+        }
+    }
+    highlightActiveSessionGroup(sessionIndex) {
+        const sessionItems = document.querySelectorAll('.session-group-item');
+        sessionItems.forEach(item => {
+            item.classList.remove('active');
+            if (item.dataset.sessionIndex === sessionIndex.toString()) {
+                item.classList.add('active');
+                item.style.borderLeftColor = '#28a745';
+            } else {
+                item.style.borderLeftColor = '#007bff';
+            }
+        });
+    }
+
+
+
+
+
+
+
+
 }
 
 // 全局注册

@@ -167,6 +167,25 @@
         console.log('session-list:', document.getElementById('session-list'));
         console.log('refresh-sessions:', document.getElementById('refresh-sessions'));
     </script>
+
+    <script>
+        // 复制SQL功能
+        function copyToClipboard(button) {
+            const sqlCode = button.nextElementSibling.querySelector('code').textContent;
+            navigator.clipboard.writeText(sqlCode).then(() => {
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="bi bi-check"></i> 已复制';
+                button.classList.add('btn-success');
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('btn-success');
+                }, 2000);
+            });
+        }
+    </script>
+
+
+
 </body>
 
 </html>

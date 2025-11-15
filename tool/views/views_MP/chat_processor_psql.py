@@ -427,43 +427,53 @@ class PSQLDataProcessor:
         except Exception as e:
             logger.error(f"❌ AI分析结果失败: {e}")
             return self.generate_basic_analysis(query_result)
+        
+
 
     def format_final_response(self, user_message, sql_generation, query_result, analysis_result):
-        """格式化最终响应 - 显示SQL + 结果 + 分析"""
+        """格式化最终响应 - 美化显示格式"""
         preview_table = self.generate_preview_table(query_result)
         
-        # 检查分析结果是否包含错误信息
-        if "超时" in analysis_result or "失败" in analysis_result:
-            analysis_display = f"""
-            <div class="alert alert-warning">
-                <strong>⚠️ AI分析暂时不可用</strong><br>
-                已为您提供基础数据分析：
-                {analysis_result}
-            </div>
-            """
-        else:
-            analysis_display = f"""
-            <div class="alert alert-info">{analysis_result}</div>
-            """
+        # 美化分析结果显示
+        formatted_analysis = self.beautify_analysis_output(analysis_result)
         
         response_data = {
             'status': 'success',
             'response_type': 'intelligent_sql_analysis',
             'message': f"""
     <div class="intelligent-analysis-result">
-        <div class="analysis-content mb-4">
-            <h4>🤖 智能分析结果</h4>
-            {analysis_display}
+        <div class="analysis-header bg-primary text-white p-3 rounded-top">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-robot fs-4 me-2"></i>
+                <h4 class="mb-0">🤖 智能分析结果</h4>
+            </div>
+            <small>基于您的查询条件，已找到 {len(query_result)} 条相关记录</small>
         </div>
         
-        <div class="sql-info mb-3">
-            <h5>🔍 执行的SQL查询</h5>
-            <pre class="bg-light p-3 border rounded"><code>{sql_generation['sql_query']}</code></pre>
+        <div class="analysis-body p-4">
+            {formatted_analysis}
         </div>
         
-        <div class="data-preview">
-            <h5>📊 数据预览（共 {len(query_result)} 条记录）</h5>
-            {preview_table}
+        <div class="analysis-technical bg-light p-3 border-top">
+            <div class="sql-info mb-3">
+                <h5 class="d-flex align-items-center">
+                    <i class="bi bi-database me-2"></i>执行的SQL查询
+                </h5>
+                <div class="sql-code-container">
+                    <button class="btn btn-sm btn-outline-secondary mb-2 copy-sql-btn" 
+                            onclick="copyToClipboard(this)">
+                        <i class="bi bi-clipboard"></i> 复制SQL
+                    </button>
+                    <pre class="bg-light p-3 border rounded"><code>{sql_generation['sql_query']}</code></pre>
+                </div>
+            </div>
+            
+            <div class="data-preview">
+                <h5 class="d-flex align-items-center">
+                    <i class="bi bi-table me-2"></i>数据预览（共 {len(query_result)} 条记录）
+                </h5>
+                {preview_table}
+            </div>
         </div>
     </div>
             """,
@@ -473,6 +483,66 @@ class PSQLDataProcessor:
         }
         
         return response_data
+    def beautify_analysis_output(self, analysis_text):
+        """美化AI分析结果的显示"""
+        if not analysis_text:
+            return '<div class="alert alert-warning">暂无分析结果</div>'
+        
+        # 处理Markdown格式为HTML
+        formatted_html = self.markdown_to_html(analysis_text)
+        
+        return f"""
+        <div class="analysis-content">
+            <div class="analysis-text">
+                {formatted_html}
+            </div>
+        </div>
+        """
+    def markdown_to_html(self, markdown_text):
+        """将Markdown格式转换为美化HTML"""
+        import re
+        
+        # 替换标题
+        markdown_text = re.sub(r'### (.*?)(?=\n|$)', r'<h5 class="text-primary mt-4">\1</h5>', markdown_text)
+        markdown_text = re.sub(r'## (.*?)(?=\n|$)', r'<h4 class="text-primary mt-4 border-bottom pb-2">\1</h4>', markdown_text)
+        markdown_text = re.sub(r'# (.*?)(?=\n|$)', r'<h3 class="text-primary mt-4 border-bottom pb-2">\1</h3>', markdown_text)
+        
+        # 替换列表项
+        markdown_text = re.sub(r'\* (.*?)(?=\n|$)', r'<li class="mb-1">\1</li>', markdown_text)
+        markdown_text = re.sub(r'(<li.*?</li>\s*)+', r'<ul class="list-unstyled ms-3">\g<0></ul>', markdown_text, flags=re.DOTALL)
+        
+        # 替换粗体
+        markdown_text = re.sub(r'\*\*(.*?)\*\*', r'<strong class="text-dark">\1</strong>', markdown_text)
+        
+        # 替换段落
+        paragraphs = re.split(r'\n\s*\n', markdown_text)
+        formatted_paragraphs = []
+        
+        for para in paragraphs:
+            para = para.strip()
+            if not para:
+                continue
+            # 如果已经是HTML标签，不处理
+            if para.startswith('<') and para.endswith('>'):
+                formatted_paragraphs.append(para)
+            else:
+                # 检查是否是列表
+                if para.startswith('<ul>'):
+                    formatted_paragraphs.append(para)
+                else:
+                    formatted_paragraphs.append(f'<p class="mb-3">{para}</p>')
+        
+        return '\n'.join(formatted_paragraphs)
+
+    
+
+
+
+
+
+
+
+
 
     # 辅助方法
     def extract_sql_from_ai_response(self, ai_content):
