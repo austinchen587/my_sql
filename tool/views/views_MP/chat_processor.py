@@ -10,6 +10,7 @@ from decimal import Decimal
 # 导入功能模块
 from .chat_processor_ai import AIChatProcessor
 from .chat_processor_psql import PSQLDataProcessor
+from .markdown_formatter import MarkdownFormatter
 
 
 # 配置详细的日志记录
@@ -164,12 +165,26 @@ class ChatMessageProcessor:
         # 使用AI处理器处理普通聊天，传入完整历史
         ai_response = self.ai_chat_processor.handle_normal_chat(message, session_history)
         
-        return {
+        # 仅在响应是纯文本时应用Markdown美化
+        def needs_markdown(content):
+            return (
+                isinstance(content, str) and 
+                not content.startswith('<') and  # 排除HTML
+                not '\n' in content and  # 排除可能已格式化的内容
+                len(content.split()) > 3  # 只有足够长的文本才处理
+            )
+        
+        formatted_response = {
             'status': 'success',
             'response_type': 'normal_chat',
-            'message': ai_response,
+            'message': MarkdownFormatter.beautify(ai_response) if needs_markdown(ai_response) else ai_response,
             'context_used': len(session_history)
         }
+        
+        return formatted_response
+        
+
+    
     def contains_data_reference(self, message):
         """检查消息是否包含对历史数据的引用"""
         reference_keywords = [

@@ -72,29 +72,63 @@ function initializeChat() {
     }
 
     function createMessageElement(text, type, isFormatted = false) {
-        console.log(`📝 创建消息元素，类型: ${type}`);
-        const messageElement = document.createElement('div');
-        messageElement.className = `message ${type}`;
-        let displayText;
-        if (isFormatted) {
-            // AI返回的HTML内容直接显示
-            displayText = text;
-        } else if (type === 'sent') {
-            // 用户消息进行HTML转义
-            displayText = escapeHtml(text).replace(/\n/g, '<br>');
-        } else {
-            // AI普通消息进行HTML转义和换行处理
-            displayText = escapeHtml(text).replace(/\n/g, '<br>');
+    console.log(`📝 创建消息元素，类型: ${type}`);
+    
+    const messageElement = document.createElement('div');
+    messageElement.className = `message ${type}`;
+    
+    // 初始化 marked.js 解析器（需提前引入marked库）
+    const markedOptions = {
+        breaks: true,
+        gfm: true,
+        tables: true,
+        xhtml: true
+    };
+    
+    // 安全解析函数
+    const safeParseMarkdown = (content) => {
+        try {
+            if (typeof marked !== 'undefined') {
+                return marked.parse(content, markedOptions);
+            }
+            return escapeHtml(content).replace(/\n/g, '<br>');
+        } catch (e) {
+            console.error('Markdown解析失败:', e);
+            return escapeHtml(content).replace(/\n/g, '<br>');
         }
-        // 如果是AI返回的HTML内容，添加特殊样式类
-        const isHtmlContent = isFormatted && (text.includes('<div') || text.includes('<table'));
-        const contentClass = isHtmlContent ? 'html-content' : '';
-        messageElement.innerHTML = `
-        <div class="message-avatar bg-${type === 'sent' ? 'primary' : 'success'} rounded-circle">
-            <span>${type === 'sent' ? '👤' : '🤖'}</span>
+    };
+    
+    let displayText;
+    const isUserMessage = type === 'sent';
+    
+    // 1. 用户消息处理（保持原样）
+    if (isUseressage) {
+        displayText = escapeHtml(text).replace(/\n/g, '<br>');
+    }
+    // 2. AI格式化内容（HTML）
+    else if (isFormatted) {
+        displayText = text;
+    }
+    // 3. AI普通消息（智能识别处理）
+    else {
+        const isLikelyMarkdown = /^([#*\-|>`]|$$.+$$|\d\.)/gm.test(text);
+        displayText = isLikelyMarkdown ? safeParseMarkdown(text) : escapeHtml(text).replace(/\n/g, '<br>');
+    }
+    
+    // 样式类判断优化
+    const isHtmlContent = !isUserMessage && (
+        isFormatted || 
+        displayText.startsWith('<table') || 
+        displayText.startsWith('<div')
+    );
+    
+    // 使用模板字符串生成HTML
+    messageElement.innerHTML = `
+        <div class="message-avatar bg-${isUserMessage ? 'primary' : 'success'} rounded-circle">
+            <span>${isUserMessage ? '👤' : '🤖'}</span>
         </div>
-        <div class="message-content ${contentClass}">
-            <div class="message-sender">${type === 'sent' ? '您' : 'AI助手'}</div>
+        <div class="message-content ${isHtmlContent ? 'html-content markdown-body' : ''}">
+            <div class="message-sender">${isUserMessage ? '您' : 'AI助手'}</div>
             <div class="message-text">${displayText}</div>
             <div class="message-time">${new Date().toLocaleTimeString('zh-CN', {
                 hour: '2-digit',
@@ -102,10 +136,17 @@ function initializeChat() {
             })}</div>
         </div>
     `;
-        messageArea.appendChild(messageElement);
-        messageArea.scrollTop = messageArea.scrollHeight;
-        console.log('✅ 消息元素添加完成');
+    
+    // 添加后处理
+    if (isHtmlContent) {
+        messageElement.querySelector('.message-text').classList.add('formatted-content');
     }
+    
+    messageArea.appendChild(messageElement);
+    messageArea.scrollTop = messageArea.scrollHeight;
+    console.log('✅ 消息元素添加完成');
+}
+
 
     // 更新按钮状态
     function updateButtonState() {
