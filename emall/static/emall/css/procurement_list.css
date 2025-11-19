@@ -1,0 +1,22 @@
+.detail-row {
+    display: none;
+}
+
+.detail-row.show {
+    display: table-row;
+}
+
+/* 自定义样式可以添加在这里 */
+.list-group-item {
+    word-break: break-all;
+}
+
+#detailBusinessReq {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.modal-body {
+    overflow-y: auto;
+    max-height: 80vh;
+}

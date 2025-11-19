@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initParticleBackground();
 
     // 导航栏滚动效果
-    window.addEventListener('scroll', handleNvBarScroll);
+    window.addEventListener('scroll', handleNavBarScroll);
 
     // 特性卡片动画
     initFeatureCardsAnimation();

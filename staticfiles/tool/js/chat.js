@@ -1,376 +1,282 @@
-// chat.js - 集成 AI 的主聊天界面逻辑
+// tool/static/tool/js/chat.js
+console.log('🚀 chat.js 开始加载');
+
+// HTML转义函数 - 移到全局作用域顶部
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 function initializeChat() {
-    // DOM元素获取
+    console.log('🔧 开始初始化聊天功能');
+
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const messageArea = document.getElementById('message-area');
-    const characterCount = document.getElementById('character-count');
     const clearButton = document.getElementById('clear-chat');
-    const apiConfigBtn = document.getElementById('api-config-btn');
 
+    console.log('📋 元素获取状态:', {
+        messageInput: !!messageInput,
+        sendButton: !!sendButton,
+        messageArea: !!messageArea,
+        clearButton: !!clearButton
+    });
 
-    // ==================== 新增：初始化历史管理器 ====================
-    let historyManager = null;
-    if (window.ChatHistoryManager) {
-        historyManager = new ChatHistoryManager();
-        console.log('历史管理器初始化成功');
-    } else {
-        console.warn('历史管理器未加载，历史保存功能将不可用');
-    }
-    // ==================== 新增结束 ====================
-
-
-
-
-
-    // 检查是否所有必需的元素都存在
-    if (!messageInput || !sendButton || !messageArea || !characterCount) {
-        console.error('无法找到必需的DOM元素，请检查HTML结构');
+    // 检查关键元素是否存在
+    if (!messageInput || !sendButton || !messageArea) {
+        console.error('❌ 关键元素未找到，延迟重试...');
+        setTimeout(initializeChat, 500);
         return;
     }
 
-    // 配置
-    const MAX_CHARACTERS = 1800;
-    let isAIThinking = false;
-    let thinkingElement = null;
-
-    // ==================== 辅助函数定义 ====================
-
-    // 更新字符计数
-    function updateCharacterCount() {
-        const count = messageInput.value.length;
-        characterCount.textContent = `${count}/${MAX_CHARACTERS}`;
-        characterCount.classList.toggle('text-danger', count > MAX_CHARACTERS * 0.9);
+    // 检查ChatMessageHandler是否已加载
+    if (typeof window.ChatMessageHandler === 'undefined') {
+        console.error('❌ ChatMessageHandler未加载，延迟重试...');
+        setTimeout(initializeChat, 500);
+        return;
     }
 
-    // 创建消息元素并添加到聊天区域
-    function createMessageElement(text, type, senderName = null) {
-        // 创建消息容器
-        const messageElement = document.createElement('div');
-        messageElement.className = `message ${type} ${type === 'thinking' ? 'thinking' : ''}`;
+    console.log('✅ 所有依赖项检查通过');
 
-        // 创建头像
-        const avatar = document.createElement('div');
-        avatar.className = type === 'sent' ?
-            'message-avatar bg-primary rounded-circle d-flex align-items-center justify-content-center' :
-            type === 'thinking' ?
-            'message-avatar bg-warning rounded-circle d-flex align-items-center justify-content-center' :
-            'message-avatar bg-success rounded-circle d-flex align-items-center justify-content-center';
+    async function sendMessage() {
+        const messageText = messageInput.value.trim();
+        console.log('📤 准备发送消息:', messageText);
 
-        avatar.innerHTML = type === 'sent' ?
-            '<span class="text-white fw-bold">U</span>' :
-            type === 'thinking' ?
-            '<span class="text-white fw-bold">⚡</span>' :
-            '<span class="text-white fw-bold">AI</span>';
-
-        // 创建消息内容
-        const messageContent = document.createElement('div');
-        messageContent.className = 'message-content';
-
-        // 添加发送者名称
-        const sender = document.createElement('div');
-        sender.className = 'message-sender';
-        sender.textContent = senderName || (type === 'sent' ? '您' :
-            type === 'thinking' ? 'AI 思考中...' : 'AI助手');
-
-        // 添加消息文本
-        const messageText = document.createElement('div');
-        messageText.className = 'message-text';
-
-        if (type === 'thinking') {
-            // 思考状态显示动画
-            messageText.innerHTML = '<div class="thinking-dots"><span>.</span><span>.</span><span>.</span></div>';
-        } else {
-            messageText.textContent = text;
+        if (!messageText) {
+            console.log('⏹️ 消息为空，不发送');
+            return;
         }
 
-        // 添加时间戳
-        const time = document.createElement('div');
-        time.className = 'message-time';
-        time.textContent = new Date().toLocaleTimeString('zh-CN', {
-            hour: '2-digit',
-            minute: '2-digit'
+        // 禁用发送按钮防止重复发送
+        sendButton.disabled = true;
+
+        // 添加用户消息到界面
+        createMessageElement(messageText, 'sent');
+        messageInput.value = '';
+        updateButtonState();
+
+        try {
+            console.log('🚀 调用ChatMessageHandler...');
+            const response = await window.ChatMessageHandler.handleUserMessage(messageText);
+            console.log('✅ 收到响应:', response);
+            createMessageElement(response, 'received', true);
+        } catch (error) {
+            console.error('❌ 处理消息时出错:', error);
+            createMessageElement(`错误: ${error.message}`, 'received');
+        } finally {
+            // 重新启用发送按钮
+            sendButton.disabled = false;
+            messageInput.focus();
+        }
+    }
+
+    function createMessageElement(text, type, isFormatted = false) {
+    console.log(`📝 创建消息元素，类型: ${type}`);
+    
+    const messageElement = document.createElement('div');
+    messageElement.className = `message ${type}`;
+    
+    // 初始化 marked.js 解析器（需提前引入marked库）
+    const markedOptions = {
+        breaks: true,
+        gfm: true,
+        tables: true,
+        xhtml: true
+    };
+    
+    // 安全解析函数
+    const safeParseMarkdown = (content) => {
+        try {
+            if (typeof marked !== 'undefined') {
+                return marked.parse(content, markedOptions);
+            }
+            return escapeHtml(content).replace(/\n/g, '<br>');
+        } catch (e) {
+            console.error('Markdown解析失败:', e);
+            return escapeHtml(content).replace(/\n/g, '<br>');
+        }
+    };
+    
+    let displayText;
+    const isUserMessage = type === 'sent';
+    
+    // 1. 用户消息处理（保持原样）
+    if (isUseressage) {
+        displayText = escapeHtml(text).replace(/\n/g, '<br>');
+    }
+    // 2. AI格式化内容（HTML）
+    else if (isFormatted) {
+        displayText = text;
+    }
+    // 3. AI普通消息（智能识别处理）
+    else {
+        const isLikelyMarkdown = /^([#*\-|>`]|$$.+$$|\d\.)/gm.test(text);
+        displayText = isLikelyMarkdown ? safeParseMarkdown(text) : escapeHtml(text).replace(/\n/g, '<br>');
+    }
+    
+    // 样式类判断优化
+    const isHtmlContent = !isUserMessage && (
+        isFormatted || 
+        displayText.startsWith('<table') || 
+        displayText.startsWith('<div')
+    );
+    
+    // 使用模板字符串生成HTML
+    messageElement.innerHTML = `
+        <div class="message-avatar bg-${isUserMessage ? 'primary' : 'success'} rounded-circle">
+            <span>${isUserMessage ? '👤' : '🤖'}</span>
+        </div>
+        <div class="message-content ${isHtmlContent ? 'html-content markdown-body' : ''}">
+            <div class="message-sender">${isUserMessage ? '您' : 'AI助手'}</div>
+            <div class="message-text">${displayText}</div>
+            <div class="message-time">${new Date().toLocaleTimeString('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit'
+            })}</div>
+        </div>
+    `;
+    
+    // 添加后处理
+    if (isHtmlContent) {
+        messageElement.querySelector('.message-text').classList.add('formatted-content');
+    }
+    
+    messageArea.appendChild(messageElement);
+    messageArea.scrollTop = messageArea.scrollHeight;
+    console.log('✅ 消息元素添加完成');
+}
+
+
+    // 更新按钮状态
+    function updateButtonState() {
+        const hasText = messageInput.value.trim().length > 0;
+        sendButton.disabled = !hasText;
+
+        // 字符计数
+        const countElement = document.getElementById('character-count');
+        if (countElement) {
+            countElement.textContent = `${messageInput.value.length}/1800`;
+        }
+
+        console.log('📊 输入框状态:', {
+            hasText: hasText,
+            length: messageInput.value.length,
+            buttonDisabled: !hasText
         });
-
-        // 组装消息
-        messageContent.appendChild(sender);
-        messageContent.appendChild(messageText);
-        messageContent.appendChild(time);
-
-        messageElement.appendChild(avatar);
-        messageElement.appendChild(messageContent);
-
-        // 添加到聊天区域
-        messageArea.appendChild(messageElement);
-
-        // 滚动到底部显示最新消息
-        messageArea.scrollTop = messageArea.scrollHeight;
-
-        return messageElement;
-    }
-
-    // 显示思考状态
-    function showThinking() {
-        if (isAIThinking) return null;
-
-        isAIThinking = true;
-        thinkingElement = createMessageElement('', 'thinking');
-        return thinkingElement;
-    }
-
-    // 隐藏思考状态
-    function hideThinking() {
-        if (thinkingElement) {
-            thinkingElement.remove();
-            thinkingElement = null;
-        }
-        isAIThinking = false;
     }
 
     // 清空聊天记录
     function clearChat() {
-        messageArea.innerHTML = '';
-        if (window.aiChatBot) {
-            window.aiChatBot.clearHistory();
-        }
-        hideThinking();
-
-        // ==================== 新增：创建新会话 ====================
-        if (historyManager) {
-            const newSessionId = historyManager.createNewSession();
-            console.log('已创建新会话:', newSessionId);
-        }
-        // ==================== 新增结束 ====================
-    }
-
-    // 显示API配置界面
-    function showApiConfig() {
-        // 修复可选链操作符语法错误
-        const currentApiKey = (window.APP_CONFIG && window.APP_CONFIG.SILICONFLOW_API_KEY) || '';
-        const apiKey = prompt('请输入硅基流动 API Key:', currentApiKey);
-        if (apiKey !== null) {
-            if (window.APP_CONFIG) {
-                window.APP_CONFIG.setApiKey(apiKey);
-                alert('API Key 已保存');
-            } else {
-                alert('配置系统未加载，请刷新页面重试');
-            }
-        }
-    }
-    // 检查配置状态 - 同样修复可选链操作符
-    setTimeout(() => {
-        // 修复：使用传统的 && 操作符替代 ?.
-        if (!(window.APP_CONFIG && window.APP_CONFIG.SILICONFLOW_API_KEY)) {
-            console.warn('请先配置API Key');
-            // 可以在这里添加一个提示消息
-            setTimeout(() => {
-                createMessageElement('请点击右上角设置按钮配置API Key以启用AI聊天功能', 'received');
-            }, 1500);
-        } else {
-            console.log('✅ API Key 已配置，准备恢复历史记录');
-            // 延迟恢复历史记录
-            setTimeout(() => {
-                if (window.aiChatBot && historyManager) {
-                    restoreChatHistory();
+        if (confirm('确定要清空聊天记录吗？')) {
+            const messages = messageArea.querySelectorAll('.message');
+            messages.forEach((msg, index) => {
+                // 保留欢迎消息
+                if (index > 0) {
+                    msg.remove();
                 }
-            }, 800);
-        }
-    }, 300);
-
-
-
-
-    // ==================== 核心功能函数 ====================
-
-    // 发送消息功能
-    async function sendMessage() {
-
-        console.log('sendMessage 函数被调用');
-        const messageText = messageInput.value.trim();
-        console.log('消息内容:', messageText);
-
-        // 验证消息
-        if (!messageText) {
-            console.log('消息为空，取消发送');
-            messageInput.focus();
-            return;
-        }
-
-        if (messageText.length > MAX_CHARACTERS) {
-            console.log('消息长度超限:', messageText.length);
-            alert(`消息不能超过${MAX_CHARACTERS}个字符`);
-            return;
-        }
-        console.log('开始发送消息流程...');
-
-        // 检查AI功能是否可用
-        if (!window.ChatMessageHandler) {
-            createMessageElement('消息处理功能未正确加载', 'received');
-            return;
-        }
-
-        // 检查API配置 - 确保正确检查
-        if (!window.APP_CONFIG || !window.APP_CONFIG.SILICONFLOW_API_KEY) {
-            createMessageElement('请先配置API Key（点击右上角设置按钮）', 'received');
-            hideThinking();
-            return;
-        }
-
-        // 添加用户消息
-        createMessageElement(messageText, 'sent');
-
-        // 清空输入框并更新计数
-        messageInput.value = '';
-        updateCharacterCount();
-
-        // 显示思考状态
-        const thinkingElement = showThinking();
-
-        try {
-            // 🚨 关键修复：统一使用 ChatMessageHandler 处理所有消息
-            const aiReply = await window.ChatMessageHandler.handleUserMessage(messageText);
-            // 隐藏思考状态，显示AI回复
-            hideThinking();
-
-            // 使用innerHTML来渲染格式化内容（包括表格等）
-            const messageElement = createMessageElement('', 'received');
-            const messageTextElement = messageElement.querySelector('.message-text');
-            messageTextElement.innerHTML = aiReply;
-            // ==================== 修复历史记录保存逻辑 ====================
-            if (historyManager) {
-                // 构建标准格式的历史记录
-                const newHistoryEntry = [
-                    { role: 'user', content: messageText },
-                    { role: 'assistant', content: aiReply }
-                ];
-
-                // 获取当前历史记录并添加新消息
-                const currentHistory = historyManager.loadCurrentSessionHistory();
-                const updatedHistory = [...currentHistory, ...newHistoryEntry];
-
-                // 保存更新后的历史记录
-                historyManager.saveChatHistory(updatedHistory);
-                console.log('对话历史已保存');
-            }
-
-        } catch (error) {
-            // 处理错误
-            hideThinking();
-            createMessageElement(`错误: ${error.message}`, 'received');
-            console.error('发送消息失败:', error);
-        }
-
-        // 焦点回到输入框
-        messageInput.focus();
-    }
-
-    // ==================== 新增：页面加载时恢复历史记录 ====================
-    function restoreChatHistory() {
-        console.log('🔍 开始恢复历史记录...');
-        console.log('历史管理器状态:', !!historyManager);
-
-        // 修复：正确检查 aiChatBot 是否存在
-        const aiChatBotExists = !!(window.aiChatBot);
-        console.log('AI聊天机器人状态:', aiChatBotExists);
-        if (historyManager && aiChatBotExists) {
-            const savedHistory = historyManager.loadCurrentSessionHistory();
-            console.log('加载到的历史记录:', savedHistory);
-            if (savedHistory && savedHistory.length > 0) {
-                // 设置到 AI 聊天机器人
-                window.aiChatBot.setHistory(savedHistory);
-                // 清空当前消息区域
-                messageArea.innerHTML = '';
-                // 重新渲染消息到界面（跳过系统消息）
-                savedHistory.forEach(message => {
-                    if (message.role === 'user') {
-                        createMessageElement(message.content, 'sent');
-                    } else if (message.role === 'assistant') {
-                        createMessageElement(message.content, 'received');
-                    }
-                });
-                console.log('✅ 已恢复历史记录:', savedHistory.length, '条消息');
-                // 滚动到底部
-                messageArea.scrollTop = messageArea.scrollHeight;
-            } else {
-                console.log('ℹ️ 没有历史记录需要恢复');
-            }
-        } else {
-            console.error('❌ 无法恢复历史记录：依赖未就绪');
+            });
         }
     }
-    // ==================== 新增结束 ====================
 
-
-
-
-
-
-
-    // ==================== 事件监听器设置 ====================
+    // 事件监听绑定 - 修复版本
+    console.log('🔗 开始绑定事件监听器...');
 
     // 发送按钮点击事件
-    sendButton.addEventListener('click', sendMessage);
+    sendButton.addEventListener('click', function(e) {
+        console.log('🖱️ 发送按钮被点击');
+        sendMessage();
+    });
 
-    // 输入框事件
-    messageInput.addEventListener('input', updateCharacterCount);
-
+    // 输入框回车事件
     messageInput.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
+            console.log('⌨️ 回车键被按下');
             e.preventDefault();
             sendMessage();
         }
     });
 
-    // 清空聊天按钮
+    // 清空按钮事件
     if (clearButton) {
         clearButton.addEventListener('click', clearChat);
     }
 
-    // API配置按钮
-    if (apiConfigBtn) {
-        apiConfigBtn.addEventListener('click', showApiConfig);
-    }
+    // 输入框输入事件
+    messageInput.addEventListener('input', updateButtonState);
 
-    // ==================== 初始化设置 ====================
+    // 初始按钮状态
+    updateButtonState();
 
-    // ==================== 初始化设置 ====================
-    // 页面加载后焦点自动放在输入框
-    messageInput.focus();
-    updateCharacterCount();
-    // 恢复历史记录
-    setTimeout(() => {
-        console.log('🔄 延迟恢复历史记录...');
-        if (window.aiChatBot && historyManager) {
-            restoreChatHistory();
-        } else {
-            console.warn('⚠️ AI聊天机器人未就绪，无法恢复历史记录');
-        }
-    }, 500);
-} // ← 这里应该是 initializeChat 函数的结束
-// ==== 修改这部分代码（文件末尾）====
-// ==== 简化的初始化逻辑 ====
-console.log('chat.js 开始加载');
-// 等待所有脚本加载完成
-function initializeWhenReady() {
-    console.log('检查依赖状态:', {
-        APP_CONFIG: !!window.APP_CONFIG,
-        aiChatBot: !!window.aiChatBot
-    });
-    if (window.APP_CONFIG && window.aiChatBot) {
-        console.log('所有依赖已加载，开始初始化聊天界面');
-        // 确保 aiChatBot 使用正确的配置
-        if (window.aiChatBot && window.aiChatBot.config !== window.APP_CONFIG) {
-            window.aiChatBot.config = window.APP_CONFIG;
-        }
-        initializeChat();
+    console.log('🎉 聊天功能初始化完成！');
+
+    // 安全检查函数是否存在再调用
+    if (typeof getEventListeners !== 'undefined') {
+        console.log('发送按钮事件监听器:', getEventListeners(sendButton));
+        console.log('输入框事件监听器:', getEventListeners(messageInput));
     } else {
-        console.log('等待依赖加载...');
-        setTimeout(initializeWhenReady, 100);
+        console.log('✅ 事件监听器绑定完成 (getEventListeners仅在控制台可用)');
     }
 }
-// 页面加载后开始初始化
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeWhenReady);
-} else {
-    initializeWhenReady();
+
+// 改进的初始化逻辑
+function safeInitialize() {
+    try {
+        initializeChat();
+    } catch (error) {
+        console.error('❌ 初始化失败:', error);
+        // 3秒后重试
+        setTimeout(safeInitialize, 3000);
+    }
 }
+
+// 多重初始化保障
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('📄 DOMContentLoaded - 开始初始化聊天');
+    setTimeout(safeInitialize, 100);
+});
+
+window.addEventListener('load', function() {
+    console.log('🔄 window.load - 页面完全加载，再次检查初始化');
+    setTimeout(safeInitialize, 200);
+});
+
+// 手动初始化函数（用于调试）
+window.manualInitializeChat = function() {
+    console.log('🔧 手动初始化聊天功能');
+    safeInitialize();
+};
+
+// 测试函数
+window.testChatFunctionality = function() {
+    console.log('🧪 测试聊天功能');
+    const input = document.getElementById('message-input');
+    const button = document.getElementById('send-button');
+
+    if (input && button) {
+        input.value = '测试消息 ' + new Date().toLocaleTimeString();
+        console.log('设置测试消息:', input.value);
+
+        // 更新按钮状态
+        input.dispatchEvent(new Event('input'));
+
+        // 点击发送
+        button.click();
+    } else {
+        console.error('测试失败：元素未找到');
+    }
+};
+
+// 检查事件监听器的替代方法
+window.checkEventListeners = function() {
+    const sendButton = document.getElementById('send-button');
+    const messageInput = document.getElementById('message-input');
+
+    console.log('🔍 检查事件监听器:');
+    console.log('发送按钮 onclick:', sendButton.onclick);
+    console.log('发送按钮事件属性:', sendButton._events || '无内部事件数据');
+    console.log('输入框 onkeydown:', messageInput.onkeydown);
+    console.log('输入框 oninput:', messageInput.oninput);
+};
+
+console.log('✅ chat.js 加载完成');
