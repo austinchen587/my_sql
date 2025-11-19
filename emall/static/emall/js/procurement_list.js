@@ -111,7 +111,11 @@ $(function() {
         },
         responsive: true,
         order: [[4, 'desc']], // 默认按发布日期降序
-        pageLength: 10,
+        pageLength: 25,
+        lengthMenu: [
+        [10, 25, 50, 100, 500, -1],
+        ['10 条', '25 条', '50 条', '100 条', '500 条', '所有']// 下拉选项的显示文字
+    ],
         initComplete: function() {
             console.log('DataTables初始化完成');
         },
