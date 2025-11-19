@@ -19,5 +19,8 @@ venv/
 .vscode/
 .idea/
 
+# 忽略 localtxt 目录
+D:/code/localtxt/
+
 # 忽略Django静态文件收集目录（通常由 collectstatic 命令生成，项目本身不追踪）
 # staticfiles/  <-- 注意：你本地已经有了这个文件夹，如果你不希望上传它，就取消注释这一行
