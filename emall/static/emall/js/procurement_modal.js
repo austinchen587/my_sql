@@ -18,6 +18,12 @@ function renderSection(title, items) {
 
 // 渲染详情内容
 function renderDetailContent(data) {
+    // 转换预算控制金额为数字格式
+    const priceControlDisplay = (function() {
+        const numericValue = convertPriceToNumber(data.total_price_control);
+        return numericValue !== null ? numericValue.toFixed(2) : (data.total_price_control || '-');
+    })();
+    
     const htmlContent = `
         <div class="modal-header">
             <h5 class="modal-title">${data.project_title || '采购项目详情'}</h5>
@@ -31,7 +37,7 @@ function renderDetailContent(data) {
                         <tbody>
                             <tr><th class="w-25">采购单位</th><td>${data.purchasing_unit || '-'}</td></tr>
                             <tr><th>项目编号</th><td>${data.project_number || '-'}</td></tr>
-                            <tr><th>预算控制</th><td>${data.total_price_control || '-'}</td></tr>
+                            <tr><th>预算控制</th><td>${priceControlDisplay}</td></tr>
                             <tr><th>地区</th><td>${data.region || '-'}</td></tr>
                         </tbody>
                     </table>

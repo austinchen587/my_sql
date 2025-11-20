@@ -45,6 +45,26 @@ function dateRenderer(data, type, row) {
     return data;
 }
 
+// 预算控制金额渲染器 - 简洁数字格式
+function priceControlRenderer(data, type, row) {
+    if (!data || data === '-') return '-';
+    
+    if (type === 'display') {
+        // 转换为数字并格式化为两位小数
+        const numericValue = convertPriceToNumber(data);
+        if (numericValue !== null) {
+            return numericValue.toFixed(2);
+        }
+        return '-';
+    } else if (type === 'sort') {
+        // 排序时使用数字值
+        const numericValue = convertPriceToNumber(data);
+        return numericValue !== null ? numericValue : 0;
+    }
+    
+    return data;
+}
+
 // 项目标题渲染器
 function projectTitleRenderer(data, type, row) {
     if (!data) return '-';
@@ -81,7 +101,8 @@ const columnDefinitions = [
         data: 'total_price_control', 
         name: 'total_price_control', 
         title: '预算控制金额',
-        defaultContent: '-' 
+        defaultContent: '-',
+        render: priceControlRenderer
     },
     { 
         data: 'publish_date', 
@@ -92,7 +113,7 @@ const columnDefinitions = [
     { 
         data: 'quote_end_time', 
         name: 'quote_end_time', 
-        title: '报价截止时间',
+       title: '报价截止时间',
         render: dateRenderer
     },
     { 

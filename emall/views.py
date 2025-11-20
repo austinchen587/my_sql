@@ -9,6 +9,8 @@ from rest_framework.exceptions import NotFound
 from .models import ProcurementEmall
 from .serializers import ProcurementEmallSerializer
 import logging
+import json
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,48 @@ class DataTablesPagination(PageNumberPagination):
         self.request = request
         return list(self.page)
 
+# 自定义金额转换函数（与前端保持一致，修正版）
+# 自定义金额转换函数（与前端保持一致，修正版）
+def convert_price_to_number(price_str):
+    if not price_str:
+        return None
+    
+    try:
+        # 移除空格和逗号
+        clean_str = str(price_str).replace(' ', '').replace(',', '')
+        
+        # 1. 先检查"万元"（不包含"元万元"的情况）
+        if '万元' in clean_str and '元万元' not in clean_str:
+            # 处理"万元"情况
+            number_match = re.search(r'(\d+\.?\d*)万元', clean_str)
+            if number_match:
+                number_value = float(number_match.group(1))
+                return number_value * 10000
+        
+        # 2. 处理"元万元"情况（直接提取数字，不乘以10000）
+        if '元万元' in clean_str:
+            number_match = re.search(r'(\d+\.?\d*)', clean_str)
+            if number_match:
+                number_value = float(number_match.group(1))
+                return number_value
+        
+        # 3. 处理单独的"元"情况
+        if '元' in clean_str and '万元' not in clean_str:
+            number_match = re.search(r'(\d+\.?\d*)元', clean_str)
+            if number_match:
+                return float(number_match.group(1))
+        
+        # 4. 尝试直接解析为数字
+        try:
+            return float(clean_str)
+        except ValueError:
+            pass
+            
+    except Exception as e:
+        logger.warning(f'金额转换失败: {price_str}, 错误: {e}')
+    
+    return None
+
 class ProcurementEmallFilter(filters.FilterSet):
     project_title = filters.CharFilter(lookup_expr='icontains')
     purchasing_unit = filters.CharFilter(lookup_expr='icontains')
@@ -77,6 +121,36 @@ class ProcurementListDataView(ListAPIView):
 
     def get_queryset(self):
         queryset = ProcurementEmall.objects.all()
+        
+        # 处理预算控制金额的数字搜索
+        price_search_param = self.request.query_params.get('total_price_control_search')
+        if price_search_param:
+            try:
+                search_data = json.loads(price_search_param)
+                operator = search_data.get('operator')
+                
+                # 创建子查询来筛选符合条件的记录
+                matching_ids = []
+                for item in ProcurementEmall.objects.all():
+                    numeric_value = convert_price_to_number(item.total_price_control)
+                    if numeric_value is not None:
+                        if operator == '>' and numeric_value > search_data.get('value', 0):
+                            matching_ids.append(item.id)
+                        elif operator == '>=' and numeric_value >= search_data.get('value', 0):
+                            matching_ids.append(item.id)
+                        elif operator == '<' and numeric_value < search_data.get('value', 0):
+                            matching_ids.append(item.id)
+                        elif operator == '<=' and numeric_value <= search_data.get('value', 0):
+                            matching_ids.append(item.id)
+                        elif operator in ('=', '==') and abs(numeric_value - search_data.get('value', 0)) < 0.01:
+                            matching_ids.append(item.id)
+                        elif operator == 'range' and search_data.get('min') <= numeric_value <= search_data.get('max'):
+                            matching_ids.append(item.id)
+                
+                queryset = queryset.filter(id__in=matching_ids)
+                
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f'预算控制金额搜索参数解析失败: {price_search_param}, 错误: {e}')
         
         # 搜索处理
         search_value = self.request.query_params.get('search', '')
