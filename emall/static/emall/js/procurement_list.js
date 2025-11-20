@@ -5,6 +5,62 @@ $(document).ajaxStart(function() {
 });
 
 $(function() {
+    // 注册自定义日期排序插件（处理字符串格式的日期）
+    $.fn.dataTable.ext.type.order['date-string-asc'] = function(a, b) {
+        // 处理空值
+        if (!a) return 1;
+        if (!b) return -1;
+        if (a === b) return 0;
+        
+        // 尝试解析日期字符串
+        const dateA = parseDateString(a);
+        const dateB = parseDateString(b);
+        
+        return dateA - dateB;
+    };
+
+    $.fn.dataTable.ext.type.order['date-string-desc'] = function(a, b) {
+        // 处理空值
+        if (!a) return 1;
+        if (!b) return -1;
+        if (a === b) return 0;
+        
+        // 尝试解析日期字符串
+        const dateA = parseDateString(a);
+        const dateB = parseDateString(b);
+        
+        return dateB - dateA;
+    };
+
+    // 日期字符串解析函数
+    function parseDateString(dateStr) {
+        if (!dateStr) return new Date(0); // 返回最小日期
+        
+        // 尝试常见的日期格式
+        const formats = [
+            /^(\d{4})-(\d{2})-(\d{2})$/, // YYYY-MM-DD
+            /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/, // YYYY-MM-DD HH:MM:SS
+            /^(\d{4})\/(\d{2})\/(\d{2})$/, // YYYY/MM/DD
+            /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2})$/ // YYYY/MM/DD HH:MM:SS
+        ];
+        
+        for (let format of formats) {
+            const match = dateStr.match(format);
+            if (match) {
+                if (match.length === 4) {
+                    // YYYY-MM-DD 格式
+                    return new Date(match[1], match[2] - 1, match[3]);
+                } else if (match.length === 7) {
+                    // YYYY-MM-DD HH:MM:SS 格式
+                    return new Date(match[1], match[2] - 1, match[3], match[4], match[5], match[6]);
+                }
+            }
+        }
+        
+        // 如果无法解析，返回原始字符串的Date对象（可能无效）
+        return new Date(dateStr);
+    }
+
     // 定义列配置（确保与后端字段一致）
     const columnDefinitions = [
         { 
@@ -35,13 +91,15 @@ $(function() {
             data: 'publish_date', 
             name: 'publish_date', 
             title: '发布日期',
-            render: dateRenderer 
+            render: dateRenderer,
+            type: 'date-string'  // 使用自定义日期排序类型
         },
         { 
             data: 'quote_end_time', 
             name: 'quote_end_time', 
             title: '报价截止时间',
-            render: dateRenderer 
+            render: dateRenderer,
+            type: 'date-string'  // 使用自定义日期排序类型
         },
         { 
             data: 'id', 
@@ -110,7 +168,7 @@ $(function() {
             }
         },
         responsive: true,
-        order: [[4, 'desc']], // 默认按发布日期降序
+        order: [[4, 'asc']], // 修改为按发布日期升序排列
         pageLength: 25,
         lengthMenu: [
         [10, 25, 50, 100, 500, -1],

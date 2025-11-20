@@ -165,19 +165,33 @@ class ChatMessageProcessor:
         # 使用AI处理器处理普通聊天，传入完整历史
         ai_response = self.ai_chat_processor.handle_normal_chat(message, session_history)
         
-        # 仅在响应是纯文本时应用Markdown美化
+        # 修改这里：对AI响应的纯文本内容应用Markdown美化
         def needs_markdown(content):
-            return (
-                isinstance(content, str) and 
-                not content.startswith('<') and  # 排除HTML
-                not '\n' in content and  # 排除可能已格式化的内容
-                len(content.split()) > 3  # 只有足够长的文本才处理
-            )
+            """判断内容是否需要Markdown格式化"""
+            if not isinstance(content, str):
+                return False
+            
+            # 排除HTML内容
+            if content.startswith('<') and content.endswith('>'):
+                return False
+            
+            # 排除已经是良好格式的内容（包含换行符）
+            if '\n\n' in content or content.count('\n') > 2:
+                return False
+            
+            return True
+        
+        # 应用Markdown格式化
+        if needs_markdown(ai_response):
+            logger.info("📝 对AI响应应用Markdown格式化")
+            formatted_response_text = MarkdownFormatter.beautify(ai_response)
+        else:
+            formatted_response_text = ai_response
         
         formatted_response = {
             'status': 'success',
             'response_type': 'normal_chat',
-            'message': MarkdownFormatter.beautify(ai_response) if needs_markdown(ai_response) else ai_response,
+            'message': formatted_response_text,
             'context_used': len(session_history)
         }
         

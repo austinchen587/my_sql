@@ -102,7 +102,7 @@ function initializeChat() {
     const isUserMessage = type === 'sent';
     
     // 1. 用户消息处理（保持原样）
-    if (isUseressage) {
+    if (isUserMessage) {
         displayText = escapeHtml(text).replace(/\n/g, '<br>');
     }
     // 2. AI格式化内容（HTML）
