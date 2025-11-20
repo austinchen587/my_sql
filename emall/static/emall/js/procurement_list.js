@@ -1,31 +1,29 @@
 $(document).ajaxStart(function() {
     $("#loading").show();
 }).ajaxStop(function() {
- $("#loading").hide();
+    $("#loading").hide();
 });
 
 $(function() {
-    // 注册自定义日期排序插件（处理字符串格式的日期）
-    $.fn.dataTable.ext.type.order['date-string-asc'] = function(a, b) {
-        // 处理空值
+    // 简化的自定义日期排序方法
+    $.fn.dataTableExt.oSort['date-string-asc'] = function(a, b) {
+        if (!a && !b) return 0;
         if (!a) return 1;
         if (!b) return -1;
         if (a === b) return 0;
         
-        // 尝试解析日期字符串
         const dateA = parseDateString(a);
         const dateB = parseDateString(b);
         
         return dateA - dateB;
     };
 
-    $.fn.dataTable.ext.type.order['date-string-desc'] = function(a, b) {
-        // 处理空值
+    $.fn.dataTableExt.oSort['date-string-desc'] = function(a, b) {
+        if (!a && !b) return 0;
         if (!a) return 1;
         if (!b) return -1;
         if (a === b) return 0;
         
-        // 尝试解析日期字符串
         const dateA = parseDateString(a);
         const dateB = parseDateString(b);
         
@@ -34,7 +32,10 @@ $(function() {
 
     // 日期字符串解析函数
     function parseDateString(dateStr) {
-        if (!dateStr) return new Date(0); // 返回最小日期
+        if (!dateStr) return new Date(0);
+        
+        // 移除可能的中文括号内容和其他非标准字符
+ const cleanStr = dateStr.replace(/\(.*\)/g, '').trim();
         
         // 尝试常见的日期格式
         const formats = [
@@ -45,23 +46,58 @@ $(function() {
         ];
         
         for (let format of formats) {
-            const match = dateStr.match(format);
+            const match = cleanStr.match(format);
             if (match) {
                 if (match.length === 4) {
-                    // YYYY-MM-DD 格式
                     return new Date(match[1], match[2] - 1, match[3]);
                 } else if (match.length === 7) {
-                    // YYYY-MM-DD HH:MM:SS 格式
                     return new Date(match[1], match[2] - 1, match[3], match[4], match[5], match[6]);
                 }
             }
         }
         
-        // 如果无法解析，返回原始字符串的Date对象（可能无效）
-        return new Date(dateStr);
+        // 如果无法解析，尝试直接转换为Date对象
+        return new Date(cleanStr);
     }
 
-    // 定义列配置（确保与后端字段一致）
+    // 智能日期渲染器 - 保持原始数据用于排序
+    function dateRenderer(data, type, row) {
+        if (!data) return '-';
+        
+        if (type === 'display') {
+            // 显示时返回格式化字符串
+            try {
+                const date = new Date(data);
+                return date.toLocaleDateString('zh-CN');
+            } catch (e) {
+                return data;
+            }
+        } else if (type === 'sort') {
+            // 排序时返回时间戳
+            try {
+                return new Date(data).getTime();
+            } catch (e) {
+                return 0;
+            }
+        }
+        
+        // 过滤时返回原始数据
+        return data;
+    }
+
+    // 项目标题渲染器
+    function projectTitleRenderer(data, type, row) {
+        if (!data) return '-';
+        const url = row.url || '#';
+        return `<a href="${url}" target="_blank" title="${data}">${data.length > 30 ? data.substring(0, 30) + '...' : data}</a>`;
+    }
+
+    // 详情按钮渲染器
+    function detailButtonRenderer(data) {
+        return `<button class="btn btn-sm btn-primary btn-detail" data-id="${data}">详情</button>`;
+    }
+
+    // 定义列配置
     const columnDefinitions = [
         { 
             data: 'project_title', 
@@ -91,15 +127,13 @@ $(function() {
             data: 'publish_date', 
             name: 'publish_date', 
             title: '发布日期',
-            render: dateRenderer,
-            type: 'date-string'  // 使用自定义日期排序类型
+            render: dateRenderer
         },
         { 
             data: 'quote_end_time', 
             name: 'quote_end_time', 
             title: '报价截止时间',
-            render: dateRenderer,
-            type: 'date-string'  // 使用自定义日期排序类型
+            render: dateRenderer
         },
         { 
             data: 'id', 
@@ -110,79 +144,7 @@ $(function() {
         }
     ];
 
-    // 初始化DataTables
-    const table = $('#procurementTable').DataTable({
-        processing: true,
-        serverSide: true,
-        ajax: {
-            url: '/emall/procurements/',
-            type: 'GET',
-            data: function(d) {
-                const params = {
-                    draw: d.draw,
-                    start: d.start,
-                    length: d.length,
-                    search: d.search.value,
-                    ordering: getOrderingParam(d, columnDefinitions)
-                };
-
-                // 添加筛选参数
-                addFilterParams(params);
-
-                console.log('AJAX请求参数:', params);
-                return params;
-            },
-            dataSrc: function(json) {
-                console.log('API响应数据:', json);
-                if (!json || json.error) {
-                    console.error('API返回错误:', json ? json.error : '无响应数据');
-                    return [];
-                }
-                
-                // 确保recordsFiltered正确设置
-                if (json.recordsFiltered === undefined) {
-                    json.recordsFiltered = json.recordsTotal || 0;
-                }
-                
-                return json.data;
-            },
-            error: function(xhr) {
-                console.error('DataTables AJAX错误:', xhr);
-                alert('加载数据时发生错误');
-            }
-        },
-        columns: columnDefinitions,
-        language: {
-            processing: "处理中...",
-            lengthMenu: "显示 _MENU_ 条",
-            zeroRecords: "没有找到匹配的记录",
-            info: "显示第 _START_ 至 _END_ 条，共 _TOTAL_ 条",
-            infoEmpty: "没有记录",
-            infoFiltered: "(从 _MAX_ 条记录中筛选)",
-            search: "搜索:",
-            paginate: {
-                first: "首页",
-                last: "末页",
-                next: "下一页",
-                previous: "上一页"
-            }
-        },
-        responsive: true,
-        order: [[4, 'asc']], // 修改为按发布日期升序排列
-        pageLength: 25,
-        lengthMenu: [
-        [10, 25, 50, 100, 500, -1],
-        ['10 条', '25 条', '50 条', '100 条', '500 条', '所有']// 下拉选项的显示文字
-    ],
-        initComplete: function() {
-            console.log('DataTables初始化完成');
-        },
-        drawCallback: function() {
-            console.log('表格重绘完成');
-        }
-    });
-
-    // 排序参数生成函数 - 修复排序参数格式问题
+    // 排序参数生成函数
     function getOrderingParam(d, columns) {
         if (!d.order || d.order.length === 0) return '';
         
@@ -219,27 +181,77 @@ $(function() {
         });
     }
 
-    // 项目标题渲染器
-    function projectTitleRenderer(data, type, row) {
-        if (!data) return '-';
-        const url = row.url || '#';
-        return `<a href="${url}" target="_blank" title="${data}">${data.length > 30 ? data.substring(0, 30) + '...' : data}</a>`;
-    }
-
-    // 日期渲染器
-    function dateRenderer(data) {
-        if (!data) return '-';
-        try {
-            return new Date(data).toLocaleDateString('zh-CN');
-        } catch (e) {
-            return data; // 如果日期格式无效，返回原始值
+    // 初始化DataTables
+    const table = $('#procurementTable').DataTable({
+        processing: true,
+        serverSide: true,
+        ajax: {
+            url: '/emall/procurements/',
+            type: 'GET',
+            data: function(d) {
+                    const params = {
+                        draw: d.draw,
+                        start: d.start,
+                        length: d.length,
+                        search: d.search.value,
+                        ordering: getOrderingParam(d, columnDefinitions)
+                    };
+                    console.log('分页调试 - 前端发送:', {
+                        start: d.start,
+                        length: d.length,
+                        calculated_page: Math.floor(d.start / d.length) + 1
+                    });
+                    addFilterParams(params);
+                    return params;
+                },
+            dataSrc: function(json) {
+                console.log('API响应数据:', json);
+                if (!json || json.error) {
+                    console.error('API返回错误:', json ? json.error : '无响应数据');
+                    return [];
+                }
+                
+                if (json.recordsFiltered === undefined) {
+                    json.recordsFiltered = json.recordsTotal || 0;
+                }
+                
+                return json.data;
+            },
+            error: function(xhr) {
+                console.error('DataTables AJAX错误:', xhr);
+                alert('加载数据时发生错误');
+            }
+        },
+        columns: columnDefinitions,
+        language: {
+            processing: "处理中...",
+            lengthMenu: "显示 _MENU_ 条",
+            zeroRecords: "没有找到匹配的记录",
+            info: "显示第 _START_ 至 _END_ 条，共 _TOTAL_ 条",
+            infoEmpty: "没有记录",
+            infoFiltered: "(从 _MAX_ 条记录中筛选)",
+            search: "搜索:",
+            paginate: {
+                first: "首页",
+                last: "末页",
+                next: "下一页",
+                previous: "上一页"
+            }
+        },
+        responsive: true,
+        order: [[4, 'desc']], // 按发布日期降序排列
+        pageLength: 25,
+        lengthMenu: [
+            [10, 25, 50, 100, 500, -1],
+            ['10 条', '25 条', '50 条', '100 条', '500 条', '所有']
+        ],
+        initComplete: function() {
+            console.log('DataTables初始化完成');
+        },
+        drawCallback: function() {
+            console.log('表格重绘完成');
         }
-    }
-
-    // 详情按钮渲染器
-    function detailButtonRenderer(data) {
-        return `<button class="btn btn-sm btn-primary btn-detail" data-id="${data}">详情</button>`;
-    }
+    });
 
     // 搜索按钮事件
     $('#searchBtn').on('click', function() {
