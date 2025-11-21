@@ -19,11 +19,12 @@ function saveAllData(procurementId) {
         });
     });
     
+    // 收集新备注（只有在有内容时才提交）
     const remarkContent = $('#newRemark').val().trim();
     const remarkCreator = $('#remarkCreator').val().trim();
     if (remarkContent && remarkCreator) {
         formData.new_remark = {
-            content: remarkContent,
+            remark_content: remarkContent,  // 将 'content' 改为 'remark_content'
             created_by: remarkCreator
         };
     }
@@ -69,28 +70,48 @@ function addNewRemark() {
         return;
     }
     
-    showToast('备注已准备好，点击"保存所有更改"按钮生效', 'info');
+    // 禁用按钮，显示加载状态
+    const addBtn = $('#remarks-tab').find('.btn-success');
+    const originalText = addBtn.html();
+    addBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>添加中...');
     
-    const newRemark = {
-        remark_content: content,
-        created_by: creator,
-        created_at: new Date().toISOString(),
-        created_at_display: new Date().toLocaleString('zh-CN')
+    // 注意：这里的字段名应该是 remark_content 而不是 content
+    const remarkData = {
+        new_remark: {
+            remark_content: content,  // 确保这里是 remark_content
+            created_by: creator
+        }
     };
     
-    const remarkHTML = `
-    <div class="card mb-2">
-        <div class="card-body py-2">
-            <div class="d-flex justify-content-between align-items-start mb-1">
-                <span class="fw-bold text-primary">${creator}</span>
-                <small class="text-muted">${newRemark.created_at_display}</small>
-            </div>
-            <p class="mb-0">${content}</p>
-        </div>
-    </div>`;
+    console.log('准备发送的备注数据:', remarkData);
     
-    $('#remarksHistory').prepend(remarkHTML);
-    $('#newRemark').val('');
+    $.ajax({
+        url: `/emall/purchasing/procurement/${currentProcurementId}/update/`,
+        method: 'POST',
+        data: JSON.stringify(remarkData),
+        contentType: 'application/json',
+        headers: {
+            'X-CSRFToken': getCSRFToken()
+        },
+        success: function(response) {
+            console.log('备注保存成功响应:', response);
+            showToast('备注添加成功', 'success');
+            
+            // 清空输入框
+            $('#newRemark').val('');
+            
+            // 立即刷新备注历史显示
+            refreshRemarksHistory();
+        },
+        error: function(xhr) {
+            console.error('备注保存失败:', xhr);
+            const errorMsg = xhr.responseJSON?.error || '添加备注失败，请稍后重试';
+            showToast('添加备注失败: ' + errorMsg, 'error');
+        },
+        complete: function() {
+            addBtn.prop('disabled', false).html(originalText);
+        }
+    });
 }
 
 // 提交供应商表单
@@ -381,4 +402,30 @@ function getToastClass(type) {
         'info': 'info'
     };
     return classes[type] || 'info';
+}
+
+
+
+// 刷新备注历史
+function refreshRemarksHistory() {
+    console.log('开始刷新备注历史'); // 添加调试日志
+    
+    $.ajax({
+        url: `/emall/purchasing/procurement/${currentProcurementId}/progress/`,
+        type: 'GET',
+        success: function(data) {
+            console.log('刷新备注历史获取到的数据:', data); // 添加调试日志
+            
+            // 更新备注页面的备注历史
+            $('#remarksHistory').html(renderRemarksHistory(data.remarks_history || []));
+            
+            // 更新概览页面的备注显示
+            const overviewRemarksHTML = renderOverviewRemarks(data.remarks_history || []);
+            $('#overview .card:last-child .card-body').html(overviewRemarksHTML);
+        },
+        error: function(xhr) {
+            console.error('刷新备注失败:', xhr);
+            showToast('刷新备注失败', 'error');
+        }
+    });
 }

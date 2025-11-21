@@ -165,3 +165,87 @@ function addFilterParams(params) {
         }
     });
 }
+
+
+// procurement_progress_utils.js
+// 添加新备注 - 修复版本：直接保存到后端
+function addNewRemark() {
+    const content = $('#newRemark').val().trim();
+    const creator = $('#remarkCreator').val().trim();
+    
+    if (!content) {
+        showToast('请输入备注内容', 'error');
+        return;
+    }
+    
+    if (!creator) {
+        showToast('请输入创建人', 'error');
+        return;
+    }
+    
+    // 禁用按钮，显示加载状态
+    const addBtn = $('#remarks-tab').find('.btn-success');
+    const originalText = addBtn.html();
+    addBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>添加中...');
+    
+    // 准备发送到后端的备注数据
+    const remarkData = {
+        new_remark: {
+            content: content,
+            created_by: creator
+        }
+    };
+    
+    console.log('准备发送的备注数据:', remarkData); // 添加调试日志
+    
+    $.ajax({
+        url: `/emall/purchasing/procurement/${currentProcurementId}/update/`,
+        method: 'POST',
+        data: JSON.stringify(remarkData),
+        contentType: 'application/json',
+        headers: {
+            'X-CSRFToken': getCSRFToken()
+        },
+        success: function(response) {
+            console.log('备注保存成功响应:', response); // 添加调试日志
+            showToast('备注添加成功', 'success');
+            
+            // 清空输入框
+            $('#newRemark').val('');
+            
+            // 立即刷新备注历史显示
+            refreshRemarksHistory();
+        },
+        error: function(xhr) {
+            console.error('备注保存失败:', xhr); // 添加调试日志
+            const errorMsg = xhr.responseJSON?.error || '添加备注失败，请稍后重试';
+            showToast('添加备注失败: ' + errorMsg, 'error');
+        },
+        complete: function() {
+            addBtn.prop('disabled', false).html(originalText);
+        }
+    });
+}
+// 刷新备注历史
+function refreshRemarksHistory() {
+    console.log('开始刷新备注历史'); // 添加调试日志
+    
+    $.ajax({
+        url: `/emall/purchasing/procurement/${currentProcurementId}/progress/`,
+        type: 'GET',
+        success: function(data) {
+            console.log('刷新备注历史获取到的数据:', data); // 添加调试日志
+            
+            // 更新备注页面的备注历史
+            $('#remarksHistory').html(renderRemarksHistory(data.remarks_history || []));
+            
+            // 更新概览页面的备注显示
+            const overviewRemarksHTML = renderOverviewRemarks(data.remarks_history || []);
+            $('#overview .card:last-child .card-body').html(overviewRemarksHTML);
+        },
+        error: function(xhr) {
+            console.error('刷新备注失败:', xhr);
+            showToast('刷新备注失败', 'error');
+        }
+    });
+}

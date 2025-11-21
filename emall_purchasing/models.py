@@ -179,6 +179,7 @@ class ProcurementRemark(models.Model):
     remark_content = models.TextField(verbose_name='备注内容')
     created_by = models.CharField(max_length=100, verbose_name='创建人')
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)  # 添加 auto_now=True
     
     class Meta:
         db_table = 'procurement_purchasing_remarks'
