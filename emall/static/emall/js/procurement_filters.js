@@ -13,6 +13,7 @@
         $('#resetBtn').off('click').on('click', function() {
             console.log('重置按钮点击');
             $('.filter-input').val('');
+            $('#showSelectedOnly').prop('checked', false);
             table.ajax.reload();
         });
 
@@ -22,6 +23,12 @@
                 console.log('回车键搜索');
                 table.ajax.reload();
             }
+        });
+
+        // 只看已选择项目复选框事件
+        $('#showSelectedOnly').off('change').on('change', function() {
+            console.log('只看已选择项目状态变化:', $(this).prop('checked'));
+            table.ajax.reload();
         });
     };
 })();

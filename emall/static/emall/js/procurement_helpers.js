@@ -28,6 +28,12 @@
             params.total_price_control = priceControl;
         }
         
+        // 只看已选择项目
+        const showSelectedOnly = $('#showSelectedOnly').prop('checked');
+        if (showSelectedOnly) {
+            params.show_selected_only = true;
+        }
+        
         console.log('搜索参数:', params);
     };
 

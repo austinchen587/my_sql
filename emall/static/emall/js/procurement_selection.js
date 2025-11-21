@@ -6,6 +6,7 @@
 function initSelectionModule(table) {
     bindSelectionEvents(table);
     bindProgressEvents();
+    updateSelectedCount(table);
 }
 
 // 绑定选择事件
@@ -27,7 +28,7 @@ function bindSelectionEvents(table) {
 // 切换采购选择状态
 function togglePurchaseSelection(procurementId, isSelected, checkbox, table) {
     $.ajax({
-        url: `/emall/purchasing/procurements/${procurementId}/select/`,
+        url: `/emall/purchasing/procurements/${procurementId}/select/`,  // 确保路径正确
         type: 'POST',
         headers: {
             'X-CSRFToken': getCookie('csrftoken')
@@ -39,8 +40,7 @@ function togglePurchaseSelection(procurementId, isSelected, checkbox, table) {
             if (response.success) {
                 // 更新行样式
                 updateRowStyle(procurementId, response.is_selected, table);
-                
-                // 显示成功提示
+                updateSelectedCount(table);
                 showToast('选择状态更新成功', 'success');
             } else {
                 showToast(response.error || '操作失败', 'error');
@@ -53,6 +53,9 @@ function togglePurchaseSelection(procurementId, isSelected, checkbox, table) {
         },
         complete: function() {
             checkbox.prop('disabled', false);
+            if ($('#showSelectedOnly').prop('checked')) {
+                table.ajax.reload();
+            }
         }
     });
 }
@@ -79,6 +82,18 @@ function updateRowStyle(procurementId, isSelected, table) {
     
     // 重新绑定事件
     bindProgressEvents();
+}
+
+// 更新已选择项目数量显示
+function updateSelectedCount(table) {
+    const selectedCount = $('.select-checkbox:checked').length;
+    const countElement = $('#selectedCount');
+    
+    if (selectedCount > 0) {
+        countElement.text(selectedCount).show();
+    } else {
+        countElement.hide();
+    }
 }
 
 // 获取CSRF token

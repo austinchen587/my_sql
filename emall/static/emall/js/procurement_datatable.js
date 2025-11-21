@@ -246,10 +246,16 @@
                     window.initSelectionModule(this.api());
                 }
             },
+            // 在 drawCallback 函数中添加更新选中数量的代码
             drawCallback: function() {
                 console.log('表格重绘完成，共渲染 ' + this.api().rows().count() + ' 行数据');
                 if (window.initSelectionModule) {
                     window.initSelectionModule(this.api());
+                }
+                
+                // 更新已选择项目数量
+                if (typeof updateSelectedCount === 'function') {
+                    updateSelectedCount(this.api());
                 }
                 
                 const expiredCount = $('.expired-row').length;
