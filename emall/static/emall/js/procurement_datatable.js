@@ -2,6 +2,52 @@
 (function() {
     'use strict';
 
+    // 预算控制金额转换函数 - 与后端和modal保持一致
+    window.convertPriceToNumber = function(priceStr) {
+        if (!priceStr || priceStr === '-') return null;
+        
+        try {
+            // 移除空格和逗号
+            const cleanStr = priceStr.toString().replace(/[\s,]/g, '');
+            
+            // 1. 先检查"万元"（不包含"元万元"的情况）
+            if (cleanStr.includes('万元') && !cleanStr.includes('元万元')) {
+                // 处理"万元"情况：提取数字部分乘以10000
+                const numberMatch = cleanStr.match(/(\d+\.?\d*)\s*万元/);
+                if (numberMatch) {
+                    const numberValue = parseFloat(numberMatch[1]);
+                    return numberValue * 10000;
+                }
+            }
+            
+            // 2. 处理"元万元"情况（直接提取数字，不乘以10000）
+            if (cleanStr.includes('元万元')) {
+                const numberMatch = cleanStr.match(/(\d+\.?\d*)/);
+                if (numberMatch) {
+                    return parseFloat(numberMatch[1]);
+                }
+            }
+            
+            // 3. 处理单独的"元"情况
+            if (cleanStr.includes('元') && !cleanStr.includes('万元')) {
+                const numberMatch = cleanStr.match(/(\d+\.?\d*)\s*元/);
+                if (numberMatch) {
+                    return parseFloat(numberMatch[1]);
+                }
+            }
+            
+            // 4. 如果没有单位，尝试直接解析为数字
+            const numberValue = parseFloat(cleanStr);
+            if (!isNaN(numberValue)) {
+                return numberValue;
+            }
+        } catch (e) {
+            console.warn('金额转换失败:', priceStr, e);
+        }
+        
+        return null;
+    };
+
     // 列配置 - 移除地区列，添加项目编号列
     window.columnDefinitions = [
         { 
@@ -48,7 +94,29 @@
             title: '预算控制金额',
             render: function(data, type, row) {
                 const textClass = row.is_selected ? 'text-danger fw-bold' : '';
-                return `<span class="${textClass}">${data || ''}</span>`;
+                
+                // 修复：添加金额转换逻辑
+                if (!data || data === '-' || data === '') {
+                    return `<span class="${textClass}">-</span>`;
+                }
+                
+                // 显示处理：转换为数字并格式化
+                if (type === 'display') {
+                    const numericValue = window.convertPriceToNumber(data);
+                    if (numericValue !== null) {
+                        // 使用toLocaleString格式化数字，保留2位小数，添加千分位分隔符
+                        return `<span class="${textClass} fw-bold text-success">¥${numericValue.toFixed(2)}</span>`;
+                    }
+                    // 如果无法转换，显示原始值
+                    return `<span class="${textClass}">${data}</span>`;
+                } 
+                // 排序处理：使用数字值进行排序
+                else if (type === 'sort') {
+                    const numericValue = window.convertPriceToNumber(data);
+                    return numericValue !== null ? numericValue : 0;
+                }
+                
+                return `<span class="${textClass}">${data}</span>`;
             }
         },
         { 
@@ -83,7 +151,7 @@
         }
     ];
 
-    // 检查日期时间是否早于当前时间（移至全局作用域）
+    // 检查日期时间是否早于当前时间
     window.isDateTimeBeforeNow = function(dateTimeString) {
         if (!dateTimeString) return false;
         
