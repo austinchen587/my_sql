@@ -1,10 +1,9 @@
+# emall_purchasing/urls.py
 from django.urls import path
-from . import views
-
-app_name = 'emall_purchasing'
+from .views import ProcurementSelectView, ProcurementPurchasingListView, ProcurementProgressView
 
 urlpatterns = [
-    path('procurements/<int:procurement_id>/select/', views.ProcurementSelectView.as_view(), name='procurement_select'),
-    path('procurements/<int:procurement_id>/progress/', views.ProcurementProgressView.as_view(), name='procurement_progress'),
-    path('purchasing-list/', views.ProcurementPurchasingListView.as_view(), name='purchasing_list'),
+    path('procurement/<int:procurement_id>/select/', ProcurementSelectView.as_view(), name='procurement-select'),
+    path('procurement/<int:procurement_id>/progress/', ProcurementProgressView.as_view(), name='procurement-progress'),
+    path('procurement/purchasing-list/', ProcurementPurchasingListView.as_view(), name='procurement-purchasing-list'),
 ]

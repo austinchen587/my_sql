@@ -26,9 +26,10 @@ function bindSelectionEvents(table) {
 }
 
 // 切换采购选择状态
+// procurement_selection.js - 修正选择功能的URL
 function togglePurchaseSelection(procurementId, isSelected, checkbox, table) {
     $.ajax({
-        url: `/emall/purchasing/procurements/${procurementId}/select/`,  // 确保路径正确
+        url: `/emall/purchasing/procurement/${procurementId}/select/`,  // 修正为单数
         type: 'POST',
         headers: {
             'X-CSRFToken': getCookie('csrftoken')
@@ -38,7 +39,6 @@ function togglePurchaseSelection(procurementId, isSelected, checkbox, table) {
         },
         success: function(response) {
             if (response.success) {
-                // 更新行样式
                 updateRowStyle(procurementId, response.is_selected, table);
                 updateSelectedCount(table);
                 showToast('选择状态更新成功', 'success');
