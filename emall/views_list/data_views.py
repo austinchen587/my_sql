@@ -33,7 +33,7 @@ class ProcurementListDataView(ListAPIView):
                 for item in ProcurementEmall.objects.all():
                     numeric_value = convert_price_to_number(item.total_price_control)
                     if numeric_value is not None:
-                        if operator == '>' and numeric_value > search_data.get('value', ):
+                        if operator == '>' and numeric_value > search_data.get('value', 0):
                             matching_ids.append(item.id)
                         elif operator == '>=' and numeric_value >= search_data.get('value', 0):
                             matching_ids.append(item.id)
@@ -43,7 +43,7 @@ class ProcurementListDataView(ListAPIView):
                             matching_ids.append(item.id)
                         elif operator in ('=', '==') and abs(numeric_value - search_data.get('value', 0)) < 0.01:
                             matching_ids.append(item.id)
-                        elif operator == 'range' and search_data.get('min') <= numeric_value <= search_data.get('max'):
+                        elif operator == 'range' and search_data.get('min', 0) <= numeric_value <= search_data.get('max', 0):
                             matching_ids.append(item.id)
                 
                 queryset = queryset.filter(id__in=matching_ids)
@@ -51,7 +51,7 @@ class ProcurementListDataView(ListAPIView):
             except (json.JSONDecodeError, ValueError) as e:
                 logger.warning(f'预算控制金额搜索参数解析失败: {price_search_param}, 错误: {e}')
         
-        # 搜索处理
+        # 搜索处理 - 移除地区搜索
         search_value = self.request.query_params.get('search', '')
         if not search_value:
             search_value = self.request.query_params.get('search[value]', '')
@@ -60,8 +60,8 @@ class ProcurementListDataView(ListAPIView):
             queryset = queryset.filter(
                 Q(project_title__icontains=search_value) |
                 Q(purchasing_unit__icontains=search_value) |
-                Q(project_number__icontains=search_value) |
-                Q(region__icontains=search_value)
+                Q(project_number__icontains=search_value)
+                # 移除地区搜索: Q(region__icontains=search_value)
             )
         
         # 排序处理

@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'django.contrib.postgres',
     'tool',
     'emall',
+    'emall_purchasing',
 ]
 
 MIDDLEWARE = [

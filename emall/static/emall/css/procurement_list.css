@@ -43,3 +43,20 @@ table.dataTable tbody tr.expired-row td:last-child {
 table.dataTable tbody tr.expired-row:hover td {
     background: linear-gradient(135deg, #F5DC98 0%, #F0D080 100%) !important;
 }
+
+
+/* 选中行样式 */
+.selected-row {
+    background-color: #fff5f5 !important;
+}
+.selected-row td {
+    font-weight: 600;
+}
+/* 过期行样式 */
+.expired-row {
+    background-color: #f9e7b2 !important;
+}
+/* Toast样式 */
+.toast {
+    min-width: 250px;
+}

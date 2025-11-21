@@ -144,8 +144,8 @@ function addFilterParams(params) {
     const filters = {
         project_title: $('#projectTitleFilter').val(),
         purchasing_unit: $('#purchasingUnitFilter').val(),
-        total_price_control: $('#priceControlFilter').val(),
-        region: $('#regionFilter').val()
+        project_number: $('#projectNumberFilter').val(), // 改为项目编号
+        total_price_control: $('#priceControlFilter').val()
     };
     
     Object.keys(filters).forEach(key => {
