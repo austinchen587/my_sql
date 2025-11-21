@@ -1,65 +1,85 @@
+# emall_purchasing/views/progress_views.py
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from ..models import ProcurementPurchasing, ProcurementRemark
-from emall.models import ProcurementEmall
-from ..serializers import ProcurementPurchasingSerializer
+from ..models import ProcurementPurchasing
 
 class ProcurementProgressView(APIView):
     """采购进度管理视图"""
     
-    def get(self, request, procurement_id):
-        """获取采购进度信息和备注历史"""
+    def get(self,request, procurement_id):
+        """获取采购进度信息"""
         try:
-            purchasing_info = ProcurementPurchasing.objects.get(procurement_id=procurement_id)
-            serializer = ProcurementPurchasingSerializer(purchasing_info)
-            return Response(serializer.data)
+            purchasing_info = ProcurementPurchasing.objects.select_related(
+                'procurement'
+            ).prefetch_related(
+                'suppliers',
+                'remarks_history'  # 改为正确的关联名称
+            ).get(procurement_id = procurement_id)
+            
+            # 构建供应商信息
+            suppliers_info = []
+            for supplier in purchasing_info.suppliers.all():
+                # 获取关联关系中的选择状态
+                supplier_rel = supplier.procurementsupplier_set.filter(
+                    procurement=purchasing_info
+                ).first()
+                
+                # 获取供应商商品信息
+                commodities = []
+                if hasattr(supplier, 'commodities'):
+                    for commodity in supplier.commodities.all():
+                        commodities.append({
+                            'name': commodity.name,
+                            'specification': commodity.specification,
+                            'price': str(commodity.price),
+                            'quantity': commodity.quantity,
+                            'product_url': commodity.product_url
+                        })
+                
+                suppliers_info.append({
+                    'id': supplier.id,
+                    'name': supplier.name,
+                    'source': supplier.source,
+                    'contact': supplier.contact,
+                    'store_name': supplier.store_name,
+                    'commodities': commodities,
+                    'is_selected': supplier_rel.is_selected if supplier_rel else False
+                })
+            
+            # 构建备注历史 - 使用正确的关联名称
+            remarks_history = []
+            for remark in purchasing_info.remarks_history.all().order_by('-created_at'):
+                remarks_history.append({
+                    'content': remark.remark_content,  # 注意字段名改为 remark_content
+                    'created_at': remark.created_at,
+                    'created_at_display': remark.created_at.strftime('%Y-%m-%d %H:%M'),  # 添加格式化时间
+                    'created_by': remark.created_by  # 这里已经是字符串，不需要.username
+                })
+            
+            response_data = {
+                'procurement_id': procurement_id,
+                'procurement_title': purchasing_info.procurement.project_title,
+                'procurement_number': purchasing_info.procurement.project_number,
+                'bidding_status': purchasing_info.bidding_status,
+                'bidding_status_display': purchasing_info.get_bidding_status_display(),
+                'client_contact': purchasing_info.client_contact or '',
+                'client_phone': purchasing_info.client_phone or '',
+                'total_budget': str(purchasing_info.get_total_budget()),
+                'suppliers_info': suppliers_info,
+                'remarks_history': remarks_history,
+                'created_at': purchasing_info.created_at,
+                'updated_at': purchasing_info.updated_at,
+                'is_selected': purchasing_info.is_selected
+            }
+            
+            return Response(response_data)
+            
         except ProcurementPurchasing.DoesNotExist:
             return Response({
                 'error': '采购进度信息不存在'
             }, status=status.HTTP_404_NOT_FOUND)
-    
-    def post(self, request, procurement_id):
-        """更新采购进度信息和添加备注"""
-        try:
-            procurement = ProcurementEmall.objects.get(id=procurement_id)
-            purchasing_info, created = ProcurementPurchasing.objects.get_or_create(
-                procurement=procurement
-            )
-            
-            # 处理新增备注
-            new_remark = request.data.get('new_remark')
-            if new_remark:
-                ProcurementRemark.objects.create(
-                    purchasing=purchasing_info,
-                    remark_content=new_remark.get('content', ''),
-                    created_by=new_remark.get('created_by', '系统')
-                )
-                # 更新主备注字段
-                if 'remarks' in request.data:
-                    request.data['remarks'] = purchasing_info.remarks + "\n" + new_remark.get('content', '') if purchasing_info.remarks else new_remark.get('content', '')
-            
-            serializer = ProcurementPurchasingSerializer(
-                purchasing_info, 
-                data=request.data, 
-                partial=True
-            )
-            
-            if serializer.is_valid():
-                serializer.save()
-                return Response({
-                    'success': True, 
-                    'message': '采购进度更新成功',
-                    'data': serializer.data
-                })
-                
+        except Exception as e:
             return Response({
-                'success': False, 
-                'errors': serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-            
-        except ProcurementEmall.DoesNotExist:
-            return Response({
-                'success': False, 
-                'error': '采购项目不存在'
-            }, status=status.HTTP_404_NOT_FOUND)
+                'error': f'获取数据失败: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

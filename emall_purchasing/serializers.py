@@ -1,9 +1,35 @@
 from rest_framework import serializers
-from .models import ProcurementPurchasing, ProcurementRemark
+from .models import ProcurementPurchasing, ProcurementRemark, Supplier, SupplierCommodity, ProcurementSupplier
+
+class SupplierCommoditySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SupplierCommodity
+        fields = ['id', 'name', 'specification', 'price', 'quantity', 'product_url']
+
+class SupplierSerializer(serializers.ModelSerializer):
+    commodities = SupplierCommoditySerializer(many=True, read_only=True)
+    total_quote = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Supplier
+        fields = ['id', 'name', 'source', 'contact', 'store_name', 'commodities', 'total_quote']
+    
+    def get_total_quote(self, obj):
+        total = 0
+        for commodity in obj.commodities.all():
+            total += commodity.price * commodity.quantity
+        return total
+
+class ProcurementSupplierSerializer(serializers.ModelSerializer):
+    supplier = SupplierSerializer(read_only=True)
+    total_quote = serializers.ReadOnlyField(source='get_total_quote')
+    
+    class Meta:
+        model = ProcurementSupplier
+        fields = ['id', 'supplier', 'is_selected', 'total_quote']
 
 class ProcurementRemarkSerializer(serializers.ModelSerializer):
-    """采购备注序列化器"""
-    created_at_display = serializers.CharField(source='created_at', read_only=True)
+    created_at_display = serializers.DateTimeField(source='created_at', format='%Y-%m-%d %H:%M', read_only=True)
     
     class Meta:
         model = ProcurementRemark
@@ -11,45 +37,22 @@ class ProcurementRemarkSerializer(serializers.ModelSerializer):
 
 class ProcurementPurchasingSerializer(serializers.ModelSerializer):
     procurement_title = serializers.CharField(source='procurement.project_title', read_only=True)
-    procurement_url = serializers.CharField(source='procurement.url', read_only=True)
-    quote_end_time = serializers.CharField(source='procurement.quote_end_time', read_only=True)
-    
-    # 新增的计算字段
-    commodities_count = serializers.ReadOnlyField(source='get_commodities_count')
-    total_amount = serializers.ReadOnlyField(source='get_total_amount')
-    commodities_info = serializers.ReadOnlyField(source='get_commodities_info')
-    
-    # 竞标状态显示名称
-    bidding_status_display = serializers.CharField(
-        source='get_bidding_status_display', 
-        read_only=True
-    )
-    
-    # 备注历史
+    procurement_number = serializers.CharField(source='procurement.project_number', read_only=True)
+    total_budget = serializers.SerializerMethodField()
+    suppliers_info = serializers.SerializerMethodField()
+    bidding_status_display = serializers.CharField(source='get_bidding_status_display', read_only=True)
     remarks_history = ProcurementRemarkSerializer(many=True, read_only=True)
     
     class Meta:
         model = ProcurementPurchasing
         fields = [
-            'id', 'procurement_id', 'is_selected', 
-            
-            # 商品相关字段
-            'commodity_names', 'product_specifications', 'prices', 
-            'quantities', 'product_urls', 'bidding_status', 'remarks',
-            
-            # 采购进度字段
-            'client_contact', 'client_phone', 'supplier_source',
-            'supplier_store', 'supplier_contact', 'cost',
-            
-            # 从关联模型获取的字段
-            'procurement_title', 'procurement_url', 'quote_end_time',
-            
-            # 计算字段和显示字段
-            'commodities_count', 'total_amount', 'commodities_info',
-            'bidding_status_display',
-            
-            # 备注历史
-            'remarks_history',
-            
-            'created_at', 'updated_at'
+            'id', 'procurement_id', 'is_selected', 'bidding_status', 'bidding_status_display',
+            'client_contact', 'client_phone', 'procurement_title', 'procurement_number',
+            'total_budget', 'suppliers_info', 'remarks_history', 'created_at', 'updated_at'
         ]
+    
+    def get_total_budget(self, obj):
+        return obj.get_total_budget()
+    
+    def get_suppliers_info(self, obj):
+        return obj.get_suppliers_info()
