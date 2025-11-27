@@ -80,11 +80,15 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  # Vite 默认前端端口
     "http://127.0.0.1:3000",
+    "http://192.168.10.3",
+    "http://192.168.10.10:3000",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://192.168.10.3",
+    "http://192.168.10.10:3000",
 ]
 # 详细的 CORS 头配置
 CORS_ALLOW_HEADERS = [
