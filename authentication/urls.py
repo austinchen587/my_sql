@@ -7,4 +7,5 @@ urlpatterns = [
     path('logout/', views.user_logout, name='logout'),
     path('register/', views.user_register, name='register'),
     path('user/', views.get_current_user, name='current_user'),  # 新增
+    path('check-session/', views.check_session, name='check-session'),
 ]

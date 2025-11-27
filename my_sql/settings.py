@@ -49,7 +49,7 @@ INSTALLED_APPS = [
     'tool',
     'emall',
     'emall_purchasing',
-    'api',
+    'emall_react',
     
 ]
 
@@ -75,7 +75,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+#CORS_ALLOW_ALL_ORIGINS = True
 # 或者只允许特定源（推荐生产环境使用）
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  # Vite 默认前端端口
@@ -168,12 +169,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
-
-TIME_ZONE = 'UTC'
-
+LANGUAGE_CODE = 'zh-hans'  # 中文简体
+TIME_ZONE = 'Asia/Shanghai'  # 上海时区
 USE_I18N = True
-
 USE_TZ = True
 
 

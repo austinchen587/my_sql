@@ -6,6 +6,7 @@ from django.contrib.auth.models import User
 from .serializers import RegisterSerializer
 import json
 import logging
+from django.views.decorators.http import require_http_methods
 
 logger = logging.getLogger(__name__)
 
@@ -183,3 +184,22 @@ def get_current_user(request):
             'status': 'error',
             'message': '请使用GET方法请求'
         }, status=405)
+    
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def check_session(request):
+    if request.user.is_authenticated:
+        return JsonResponse({
+            'status': 'success',
+            'user': {
+                'id': request.user.id,
+                'username': request.user.username,
+                'email': request.user.email
+            }
+        })
+    else:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Not authenticated'
+        }, status=200)  # 返回 200 而不是 401，避免前端错误
