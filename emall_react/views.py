@@ -1,51 +1,124 @@
+# emall_react/views.py
 from rest_framework import generics, filters
 from django_filters.rest_framework import DjangoFilterBackend
 from emall.models import ProcurementEmall
 from .serializers import EmallListSerializer
+from django_filters import FilterSet, CharFilter
+from django.db.models import Q
+import re
+
+class ProcurementEmallFilter(FilterSet):
+    """
+    自定义过滤器类，支持项目标题、采购单位、项目编号、控制总价的筛选
+    """
+    project_title = CharFilter(field_name='project_title', lookup_expr='icontains', label='项目标题')
+    purchasing_unit = CharFilter(field_name='purchasing_unit', lookup_expr='icontains', label='采购单位')
+    project_number = CharFilter(field_name='project_number', lookup_expr='icontains', label='项目编号')
+    total_price_control = CharFilter(field_name='total_price_control', lookup_expr='icontains', label='控制总价')
+    
+    class Meta:
+        model = ProcurementEmall
+        fields = ['project_title', 'purchasing_unit', 'project_number', 'total_price_control']
 
 class EmallListView(generics.ListAPIView):
     """
     为React前端提供采购项目列表的API视图
-    继承自ListAPIView，自动提供GET方法返回对象列表
+    支持筛选功能：项目标题、采购单位、项目编号、控制总价、价格条件筛选
     """
-    # 1. 指定查询集（从主emall app导入模型）
-    # 按发布时间倒序排列，最新的在前面
     queryset = ProcurementEmall.objects.all().order_by('-publish_date', '-id')
-    
-    # 2. 指定使用的序列化器
     serializer_class = EmallListSerializer
     
-    # 3. (可选) 配置过滤后端，为后续添加搜索过滤功能做准备
+    # 配置过滤后端
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     
-    # 3.1 (可选) 定义可搜索的字段
-    search_fields = ['project_title', 'purchasing_unit', 'project_name', 'region']
+    # 使用自定义过滤器（精确字段筛选）
+    filterset_class = ProcurementEmallFilter
     
-    # 3.2 (可选) 定义精确过滤的字段
-    # filterset_fields = ['region', 'purchasing_unit'] # 需要先定义filterset_class或使用DjangoFilterBackend的默认行为
+    # 搜索字段（全局搜索）
+    search_fields = ['project_title', 'purchasing_unit', 'project_number', 'total_price_control']
     
-    # 3.3 (可选) 定义排序字段
-    ordering_fields = ['publish_date', 'quote_end_time', 'total_price_control']
-    ordering = ['-publish_date']  # 默认排序
+    # 排序字段
+    ordering_fields = ['publish_date', 'quote_end_time']
+    ordering = ['-publish_date']  # 默认按发布时间倒序
 
-    # 4. (可选) 如果需要自定义分页，可以在这里设置
-    # pagination_class = YourCustomPaginationClass
+    def get_queryset(self):
+        """
+        添加价格条件筛选逻辑
+        """
+        queryset = super().get_queryset()
+        
+        # 获取价格条件参数
+        price_condition = self.request.query_params.get('total_price_condition')
+        
+        if price_condition:
+            # 使用Python进行内存筛选（适用于数据量不大的情况）
+            filtered_items = []
+            for item in queryset:
+                numeric_price = self.get_numeric_price_for_item(item)
+                if numeric_price is not None and self.check_price_condition(numeric_price, price_condition):
+                    filtered_items.append(item.id)
+            
+            # 返回筛选后的查询集
+            queryset = queryset.filter(id__in=filtered_items)
+        
+        # 示例：区域筛选
+        region = self.request.query_params.get('region')
+        if region:
+            queryset = queryset.filter(region__icontains=region)
+            
+        return queryset
 
-    # 5. (可选) 如果需要重写获取查询集的逻辑，可以添加以下方法
-    # def get_queryset(self):
-    #     """
-    #     可以在这里添加更复杂的查询逻辑，比如基于用户权限过滤数据
-    #     """
-    #     queryset = super().get_queryset()
-    #     # 示例：只返回特定区域的数据
-    #     # region = self.request.query_params.get('region', None)
-    #     # if region is not None:
-    #     #     queryset = queryset.filter(region=region)
-    #     return queryset
+    def get_numeric_price_for_item(self, item):
+        """
+        为单个项目获取数字化价格
+        """
+        price_str = item.total_price_control
+        if not price_str:
+            return None
+            
+        try:
+            price_str = str(price_str).strip()
+            
+            # 提取数字部分
+            match = re.search(r'([\d,]+(?:\.\d+)?)', price_str.replace(',', ''))
+            if not match:
+                return None
+                
+            number = float(match.group(1).replace(',', ''))
+            
+            # 判断单位类型
+            if '元万元' in price_str:
+                return round(number, 2)
+            elif '万元' in price_str:
+                return round(number * 10000, 2)
+            else:
+                return None
+                
+        except (ValueError, TypeError, AttributeError):
+            return None
 
-    # 6. (可选) 如果需要自定义API响应格式，可以重写list方法
-    # def list(self, request, *args, **kwargs):
-    #     response = super().list(request, args, kwargs)
-    #     # 可以在这里自定义返回的数据结构
-    #     # 例如： response.data = {'code': 200, 'message': 'success', 'data': response.data}
-    #     return response
+    def check_price_condition(self, numeric_price, price_condition):
+        """
+        检查价格是否满足条件
+        """
+        # 解析操作符和数值
+        match = re.match(r'^\s*([><]=?|=)\s*(\d+(?:\.\d+)?)\s*$', price_condition.strip())
+        
+        if not match:
+            return False
+            
+        operator = match.group(1)
+        value = float(match.group(2))
+        
+        if operator == '>' and numeric_price > value:
+            return True
+        elif operator == '>=' and numeric_price >= value:
+            return True
+        elif operator == '<' and numeric_price < value:
+            return True
+        elif operator == '<=' and numeric_price <= value:
+            return True
+        elif operator == '=' and numeric_price == value:
+            return True
+            
+        return False
