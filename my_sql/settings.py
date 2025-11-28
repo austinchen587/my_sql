@@ -83,6 +83,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://192.168.10.3",
     "http://192.168.10.10:3000",
+    "http://192.168.10.6:3000",
+
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -90,6 +92,7 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://192.168.10.3",
     "http://192.168.10.10:3000",
+    "http://192.168.10.6:3000",
 ]
 # 详细的 CORS 头配置
 CORS_ALLOW_HEADERS = [
