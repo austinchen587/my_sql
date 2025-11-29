@@ -1,12 +1,16 @@
-# views/__init__.py
-
-# 从各个子文件导入视图类并导出
+# emall_purchasing/views/__init__.py
 from .select_views import ProcurementSelectView, ProcurementPurchasingListView
-from .progress_views import ProcurementProgressView
+from .progress_views import ProcurementProgressView, update_purchasing_info
+from .supplier_views import add_supplier_to_procurement, delete_supplier, update_supplier
+from .remark_views import add_remark
 
-# 导出所有视图类
 __all__ = [
     'ProcurementSelectView',
     'ProcurementPurchasingListView',
     'ProcurementProgressView',
+    'update_purchasing_info',
+    'add_supplier_to_procurement',
+    'delete_supplier',
+    'update_supplier',
+    'add_remark',
 ]

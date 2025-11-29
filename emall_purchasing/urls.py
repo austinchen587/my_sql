@@ -1,7 +1,8 @@
 # emall_purchasing/urls.py
 from django.urls import path
 from .views import ProcurementSelectView, ProcurementPurchasingListView, ProcurementProgressView
-from .views.progress_views import ProcurementProgressView, add_supplier_to_procurement, update_purchasing_info, delete_supplier, update_supplier
+from .views.progress_views import update_purchasing_info
+from .views.supplier_views import add_supplier_to_procurement, delete_supplier, update_supplier
 
 urlpatterns = [
     path('procurement/<int:procurement_id>/select/', ProcurementSelectView.as_view(), name='procurement-select'),
