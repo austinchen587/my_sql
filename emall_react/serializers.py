@@ -1,6 +1,7 @@
 # emall_react/serializers.py - 添加完整字段
 from rest_framework import serializers
 from emall.models import ProcurementEmall
+from emall_purchasing.models import ProcurementPurchasing
 import re
 
 class EmallListSerializer(serializers.ModelSerializer):
@@ -9,6 +10,10 @@ class EmallListSerializer(serializers.ModelSerializer):
     在序列化时对total_price_control进行数字化处理
     """
     total_price_numeric = serializers.SerializerMethodField()
+    is_selected = serializers.SerializerMethodField()  # 添加这个字段
+    bidding_status = serializers.SerializerMethodField()
+    bidding_status_display = serializers.SerializerMethodField()
+    purchasing_info = serializers.SerializerMethodField()
     
     class Meta:
         model = ProcurementEmall
@@ -34,6 +39,11 @@ class EmallListSerializer(serializers.ModelSerializer):
             'quote_start_time', 
             'quote_end_time',
             'url',
+            # 新增字段
+            'is_selected',
+            'bidding_status', 
+            'bidding_status_display',
+            'purchasing_info'
         ]
         read_only_fields = fields
     
@@ -61,4 +71,51 @@ class EmallListSerializer(serializers.ModelSerializer):
                 return None
                 
         except (ValueError, TypeError, AttributeError):
+            return None
+    
+    def get_is_selected(self, obj):
+        """从采购进度表获取选中状态"""
+        try:
+            purchasing_info = ProcurementPurchasing.objects.filter(
+                procurement_id=obj.id
+            ).first()
+            if purchasing_info:
+                return purchasing_info.is_selected
+            return False
+        except Exception:
+            return False
+    
+    def get_bidding_status(self, obj):
+        """获取招标状态"""
+        try:
+            purchasing_info = ProcurementPurchasing.objects.filter(
+                procurement_id=obj.id
+            ).first()
+            return purchasing_info.bidding_status if purchasing_info else 'not_started'
+        except Exception:
+            return 'not_started'
+    
+    def get_bidding_status_display(self, obj):
+        """获取招标状态显示文本"""
+        try:
+            purchasing_info = ProcurementPurchasing.objects.filter(
+                procurement_id=obj.id
+            ).first()
+            if purchasing_info:
+                return purchasing_info.get_bidding_status_display()
+            return '未开始'
+        except Exception:
+            return '未开始'
+    
+    def get_purchasing_info(self, obj):
+        """获取完整的采购进度信息"""
+        try:
+            purchasing_info = ProcurementPurchasing.objects.filter(
+                procurement_id=obj.id
+            ).first()
+            if purchasing_info:
+                from emall_purchasing.serializers import ProcurementPurchasingSerializer
+                return ProcurementPurchasingSerializer(purchasing_info).data
+            return None
+        except Exception:
             return None

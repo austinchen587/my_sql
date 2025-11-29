@@ -24,6 +24,7 @@ urlpatterns = [
     path('',include('tool.urls')),
     path('emall/', include('emall.urls')),
     path('emall/purchasing/', include('emall_purchasing.urls')),
+    path('api/emall/purchasing/', include('emall_purchasing.urls')),
 
     #react 测试路径
     path('api/', include('emall_react.urls')),

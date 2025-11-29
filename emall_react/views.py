@@ -122,3 +122,12 @@ class EmallListView(generics.ListAPIView):
             return True
             
         return False
+    
+
+    def list(self, request, *args, **kwargs):
+        """重写list方法添加调试"""
+        print("🚀 emall_react视图被调用!")
+        print(f"📋 请求参数: {dict(request.query_params)}")
+        response = super().list(request, *args, **kwargs)
+        print(f"📦 响应数据包含 {len(response.data)} 个项目")
+        return response
