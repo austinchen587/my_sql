@@ -3,6 +3,7 @@ from django.urls import path
 from .views import ProcurementSelectView, ProcurementPurchasingListView, ProcurementProgressView
 from .views.progress_views import update_purchasing_info
 from .views.supplier_views import add_supplier_to_procurement, delete_supplier, update_supplier
+from .views.remark_views import add_remark  # 新增导入
 
 urlpatterns = [
     path('procurement/<int:procurement_id>/select/', ProcurementSelectView.as_view(), name='procurement-select'),
@@ -12,4 +13,5 @@ urlpatterns = [
     path('procurement/<int:procurement_id>/add-supplier/', add_supplier_to_procurement, name='add-supplier'),
     path('procurement/<int:procurement_id>/update/', update_purchasing_info, name='update-purchasing'),
     path('supplier/<int:supplier_id>/update/', update_supplier, name='update_supplier'),
+    path('procurement/<int:procurement_id>/add-remark/', add_remark, name='add-remark'),  # 新增路由
 ]

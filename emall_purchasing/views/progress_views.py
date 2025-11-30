@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view
-from ..models import ProcurementPurchasing, ProcurementSupplier, ProcurementRemark, ClientContact  # 添加 ClientContact 导入
+from ..models import ProcurementPurchasing, ProcurementSupplier, ProcurementRemark, ClientContact
 from .utils import build_client_contacts, build_suppliers_info, build_remarks_history, safe_json_loads
 import logging
 import traceback
@@ -33,14 +33,13 @@ class ProcurementProgressView(APIView):
             total_budget = purchasing_info.get_total_budget()
             budget_total = float(total_budget) if total_budget else 0
             
-            # 修复：传递正确的参数给 build_client_contacts
             response_data = {
                 'procurement_id': procurement_id,
                 'procurement_title': purchasing_info.procurement.project_title,
                 'procurement_number': purchasing_info.procurement.project_number,
                 'bidding_status': purchasing_info.bidding_status,
                 'bidding_status_display': purchasing_info.get_bidding_status_display(),
-                'client_contacts': build_client_contacts(purchasing_info),  # 保持单参数调用
+                'client_contacts': build_client_contacts(purchasing_info),
                 'total_budget': budget_total,
                 'suppliers_info': build_suppliers_info(purchasing_info),
                 'remarks_history': build_remarks_history(purchasing_info),
@@ -67,6 +66,15 @@ def update_purchasing_info(request, procurement_id):
     """更新采购进度信息"""
     try:
         logger.info(f"开始更新采购进度信息，ID: {procurement_id}")
+        
+        # 调试：打印所有可用的用户信息
+        logger.info(f"请求cookies: {dict(request.COOKIES)}")
+        logger.info(f"session数据: {dict(request.session)}")
+        if hasattr(request, 'user'):
+            logger.info(f"用户对象: {request.user} (认证: {request.user.is_authenticated})")
+            if request.user.is_authenticated:
+                logger.info(f"认证用户: {request.user.username} ({request.user.id})")
+        
         purchasing_info = ProcurementPurchasing.objects.get(procurement_id=procurement_id)
         
         data = safe_json_loads(request)
@@ -131,28 +139,54 @@ def update_purchasing_info(request, procurement_id):
                     continue
             logger.info(f"供应商选择状态更新完成，成功更新: {updated_count} 个")
         
-        # 添加备注
+        # 修复：增强用户信息获取逻辑
         if 'new_remark' in data and data['new_remark']:
             remark_data = data['new_remark']
             logger.info(f"准备创建备注数据: {remark_data}")
             
             remark_content = remark_data.get('remark_content')
-            created_by = remark_data.get('created_by')
             
-            if remark_content and created_by:
+            if remark_content and remark_content.strip():
+                # 增强的用户信息获取逻辑
+                created_by = "未知用户"
+                
+                # 1. 首先尝试从cookies获取username
+                username_from_cookie = request.COOKIES.get('username')
+                if username_from_cookie:
+                    created_by = username_from_cookie
+                    logger.info(f"从cookie获取用户名: {created_by}")
+                
+                # 2. 如果cookie中没有，尝试从session获取
+                elif request.session.get('username'):
+                    created_by = request.session['username']
+                    logger.info(f"从session获取用户名: {created_by}")
+                
+                # 3. 如果session中没有，尝试从认证用户获取
+                elif hasattr(request, 'user') and request.user.is_authenticated:
+                    created_by = request.user.username
+                    logger.info(f"从认证用户获取用户名: {created_by}")
+                
+                # 4. 如果都没有，尝试从请求头获取（某些前端框架可能会设置）
+                elif request.META.get('HTTP_X_USERNAME'):
+                    created_by = request.META.get('HTTP_X_USERNAME')
+                    logger.info(f"从请求头获取用户名: {created_by}")
+                
+                else:
+                    logger.warning("无法获取用户信息，使用'未知用户'")
+                
                 try:
                     new_remark = ProcurementRemark.objects.create(
                         purchasing=purchasing_info,
                         remark_content=remark_content.strip(),
-                        created_by=created_by.strip()
+                        created_by=created_by
                     )
-                    logger.info(f"成功添加新备注，备注ID: {new_remark.id}")
+                    logger.info(f"成功添加新备注，备注ID: {new_remark.id}, 创建人: {created_by}")
                 except Exception as e:
                     logger.error(f"创建备注失败: {str(e)}")
                     logger.error(traceback.format_exc())
                     raise e
             else:
-                logger.warning(f"备注数据不完整")
+                logger.warning("备注内容为空，跳过创建备注")
         
         current_remarks_count = purchasing_info.remarks_history.count()
         logger.info(f"当前采购项目的备注总数: {current_remarks_count}")

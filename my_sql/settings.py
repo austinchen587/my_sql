@@ -107,6 +107,7 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+    'x-username',  # 添加自定义头
 ]
 CORS_ALLOW_METHODS = [
     'DELETE',
@@ -116,6 +117,8 @@ CORS_ALLOW_METHODS = [
     'POST',
     'PUT',
 ]
+
+CORS_PREFLIGHT_MAX_AGE = 86400
 
 ROOT_URLCONF = 'my_sql.urls'
 

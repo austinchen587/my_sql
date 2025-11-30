@@ -111,17 +111,22 @@ def build_suppliers_info(purchasing_info):
     return suppliers_info
 
 def build_remarks_history(purchasing_info):
-    """构建备注历史"""
-    remarks_history = []
-    all_remarks = purchasing_info.remarks_history.all().order_by('-created_at')
-    
-    for remark in all_remarks:
-        remarks_history.append({
-            'id': remark.id,
-            'remark_content': remark.remark_content,
-            'created_at': remark.created_at.isoformat(),
-            'created_at_display': remark.created_at.strftime('%Y-%m-%d %H:%M'),
-            'created_by': remark.created_by
-        })
-    
-    return remarks_history
+    """构建备注历史数据"""
+    try:
+        remarks = purchasing_info.remarks_history.all().order_by('-created_at')
+        remarks_data = []
+        
+        for remark in remarks:
+            remarks_data.append({
+                'id': remark.id,
+                'remark_content': remark.remark_content,
+                'created_by': remark.created_by,
+                'created_at_display': remark.created_at.strftime('%Y-%m-%d %H:%M:%S') if remark.created_at else '未知时间'
+            })
+        
+        logger.info(f"构建备注历史完成，数量: {len(remarks_data)}")
+        return remarks_data
+        
+    except Exception as e:
+        logger.error(f"构建备注历史失败: {str(e)}")
+        return []
