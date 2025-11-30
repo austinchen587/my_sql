@@ -3,49 +3,25 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view
-from ..models import ProcurementPurchasing, ProcurementSupplier, ProcurementRemark, ClientContact
-from .utils import build_client_contacts, build_suppliers_info, build_remarks_history, safe_json_loads
 import logging
 import traceback
 from django.conf import settings
+
+from .progress_services import ProcurementProgressService
+from ..models import ProcurementPurchasing
 
 logger = logging.getLogger(__name__)
 
 class ProcurementProgressView(APIView):
     """采购进度管理视图"""
+    
     def get(self, request, procurement_id):
         """获取采购进度信息"""
         try:
             logger.info(f"开始获取采购进度信息，ID: {procurement_id}")
             
-            purchasing_info = ProcurementPurchasing.objects.select_related(
-                'procurement'
-            ).prefetch_related(
-                'suppliers',
-                'suppliers__commodities',
-                'remarks_history',
-                'client_contacts'
-            ).get(procurement_id=procurement_id)
-            
-            logger.info(f"成功获取采购信息: {purchasing_info}")
-            
-            # 构建响应数据
-            total_budget = purchasing_info.get_total_budget()
-            budget_total = float(total_budget) if total_budget else 0
-            
-            response_data = {
-                'procurement_id': procurement_id,
-                'procurement_title': purchasing_info.procurement.project_title,
-                'procurement_number': purchasing_info.procurement.project_number,
-                'bidding_status': purchasing_info.bidding_status,
-                'bidding_status_display': purchasing_info.get_bidding_status_display(),
-                'client_contacts': build_client_contacts(purchasing_info),
-                'total_budget': budget_total,
-                'suppliers_info': build_suppliers_info(purchasing_info),
-                'remarks_history': build_remarks_history(purchasing_info),
-                'created_at': purchasing_info.created_at.isoformat() if purchasing_info.created_at else None,
-                'updated_at': purchasing_info.updated_at.isoformat() if purchasing_info.updated_at else None,
-            }
+            service = ProcurementProgressService()
+            response_data = service.get_procurement_progress(procurement_id)
             
             logger.info(f"成功构建响应数据，供应商数量: {len(response_data['suppliers_info'])}, 备注数量: {len(response_data['remarks_history'])}")
             return Response(response_data)
@@ -67,136 +43,11 @@ def update_purchasing_info(request, procurement_id):
     try:
         logger.info(f"开始更新采购进度信息，ID: {procurement_id}")
         
-        # 调试：打印所有可用的用户信息
-        logger.info(f"请求cookies: {dict(request.COOKIES)}")
-        logger.info(f"session数据: {dict(request.session)}")
-        if hasattr(request, 'user'):
-            logger.info(f"用户对象: {request.user} (认证: {request.user.is_authenticated})")
-            if request.user.is_authenticated:
-                logger.info(f"认证用户: {request.user.username} ({request.user.id})")
-        
-        purchasing_info = ProcurementPurchasing.objects.get(procurement_id=procurement_id)
-        
-        data = safe_json_loads(request)
-        if not data:
-            return Response({'error': '无效的JSON数据'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        logger.info(f"接收到的数据: {data}")
-        
-        # 更新基础信息
-        if 'bidding_status' in data:
-            purchasing_info.bidding_status = data['bidding_status']
-            logger.info(f"更新竞标状态: {data['bidding_status']}")
-        
-        # 更新联系人信息
-        if 'client_contacts' in data and isinstance(data['client_contacts'], list):
-            logger.info(f"开始更新联系人信息，数量: {len(data['client_contacts'])}")
-            # 删除现有联系人
-            purchasing_info.client_contacts.all().delete()
-            
-            # 添加新联系人
-            contact_count = 0
-            for contact_data in data['client_contacts']:
-                if contact_data.get('name') or contact_data.get('contact_info'):
-                    ClientContact.objects.create(
-                        purchasing=purchasing_info,
-                        name=contact_data.get('name', ''),
-                        contact_info=contact_data.get('contact_info', '')
-                    )
-                    contact_count += 1
-                    logger.info(f"添加联系人: {contact_data.get('name')} - {contact_data.get('contact_info')}")
-            
-            logger.info(f"联系人更新完成，成功添加: {contact_count} 个联系人")
-        
-        purchasing_info.save()
-        logger.info("基础信息更新成功")
-        
-        # 更新供应商选择状态
-        if 'supplier_selection' in data and isinstance(data['supplier_selection'], list):
-            logger.info(f"开始更新供应商选择状态，数量: {len(data['supplier_selection'])}")
-            updated_count = 0
-            for supplier_data in data['supplier_selection']:
-                try:
-                    supplier_id = supplier_data.get('supplier_id')
-                    is_selected = supplier_data.get('is_selected', False)
-                    
-                    if supplier_id is not None:
-                        procurement_supplier = ProcurementSupplier.objects.get(
-                            procurement=purchasing_info,
-                            supplier_id=supplier_id
-                        )
-                        procurement_supplier.is_selected = bool(is_selected)
-                        procurement_supplier.save()
-                        updated_count += 1
-                        logger.info(f"供应商 {supplier_id} 选择状态更新为: {is_selected}")
-                    else:
-                        logger.warning("供应商ID为空，跳过")
-                except ProcurementSupplier.DoesNotExist:
-                    logger.warning(f"供应商关系不存在，supplier_id: {supplier_id}")
-                    continue
-                except Exception as e:
-                    logger.error(f"更新供应商选择状态失败，supplier_id: {supplier_id}, 错误: {str(e)}")
-                    continue
-            logger.info(f"供应商选择状态更新完成，成功更新: {updated_count} 个")
-        
-        # 修复：增强用户信息获取逻辑
-        if 'new_remark' in data and data['new_remark']:
-            remark_data = data['new_remark']
-            logger.info(f"准备创建备注数据: {remark_data}")
-            
-            remark_content = remark_data.get('remark_content')
-            
-            if remark_content and remark_content.strip():
-                # 增强的用户信息获取逻辑
-                created_by = "未知用户"
-                
-                # 1. 首先尝试从cookies获取username
-                username_from_cookie = request.COOKIES.get('username')
-                if username_from_cookie:
-                    created_by = username_from_cookie
-                    logger.info(f"从cookie获取用户名: {created_by}")
-                
-                # 2. 如果cookie中没有，尝试从session获取
-                elif request.session.get('username'):
-                    created_by = request.session['username']
-                    logger.info(f"从session获取用户名: {created_by}")
-                
-                # 3. 如果session中没有，尝试从认证用户获取
-                elif hasattr(request, 'user') and request.user.is_authenticated:
-                    created_by = request.user.username
-                    logger.info(f"从认证用户获取用户名: {created_by}")
-                
-                # 4. 如果都没有，尝试从请求头获取（某些前端框架可能会设置）
-                elif request.META.get('HTTP_X_USERNAME'):
-                    created_by = request.META.get('HTTP_X_USERNAME')
-                    logger.info(f"从请求头获取用户名: {created_by}")
-                
-                else:
-                    logger.warning("无法获取用户信息，使用'未知用户'")
-                
-                try:
-                    new_remark = ProcurementRemark.objects.create(
-                        purchasing=purchasing_info,
-                        remark_content=remark_content.strip(),
-                        created_by=created_by
-                    )
-                    logger.info(f"成功添加新备注，备注ID: {new_remark.id}, 创建人: {created_by}")
-                except Exception as e:
-                    logger.error(f"创建备注失败: {str(e)}")
-                    logger.error(traceback.format_exc())
-                    raise e
-            else:
-                logger.warning("备注内容为空，跳过创建备注")
-        
-        current_remarks_count = purchasing_info.remarks_history.count()
-        logger.info(f"当前采购项目的备注总数: {current_remarks_count}")
+        service = ProcurementProgressService()
+        result = service.update_procurement_info(procurement_id, request)
         
         logger.info(f"成功更新采购进度信息，ID: {procurement_id}")
-        return Response({
-            'success': True, 
-            'message': '采购信息更新成功',
-            'remarks_count': current_remarks_count
-        })
+        return Response(result)
         
     except ProcurementPurchasing.DoesNotExist:
         logger.error(f"采购项目不存在，ID: {procurement_id}")
@@ -208,3 +59,21 @@ def update_purchasing_info(request, procurement_id):
             'error': f'更新失败: {str(e)}',
             'details': traceback.format_exc() if settings.DEBUG else None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _log_user_info(self, request):
+    """记录用户信息用于调试"""
+    logger.info(f"请求cookies: {dict(request.COOKIES)}")
+    logger.info(f"session数据: {dict(request.session)}")
+    
+    # 添加请求头信息调试
+    encoded_username = request.META.get('HTTP_X_USERNAME')
+    if encoded_username:
+        from .progress_handlers import decode_username_from_header
+        decoded_username = decode_username_from_header(encoded_username)
+        logger.info(f"请求头中的用户名 - 编码: {encoded_username}, 解码: {decoded_username}")
+    
+    if hasattr(request, 'user'):
+        logger.info(f"用户对象: {request.user} (认证: {request.user.is_authenticated})")
+        if request.user.is_authenticated:
+            logger.info(f"认证用户: {request.user.username} ({request.user.id})")
