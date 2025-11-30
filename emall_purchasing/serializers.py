@@ -1,3 +1,4 @@
+# emall_purchasing/serializers.py
 from rest_framework import serializers
 from .models import ProcurementPurchasing, ProcurementRemark, Supplier, SupplierCommodity, ProcurementSupplier
 
@@ -42,13 +43,15 @@ class ProcurementPurchasingSerializer(serializers.ModelSerializer):
     suppliers_info = serializers.SerializerMethodField()
     bidding_status_display = serializers.CharField(source='get_bidding_status_display', read_only=True)
     remarks_history = ProcurementRemarkSerializer(many=True, read_only=True)
+    project_owner = serializers.CharField(read_only=True)  # 新增字段
     
     class Meta:
         model = ProcurementPurchasing
         fields = [
             'id', 'procurement_id', 'is_selected', 'bidding_status', 'bidding_status_display',
             'client_contact', 'client_phone', 'procurement_title', 'procurement_number',
-            'total_budget', 'suppliers_info', 'remarks_history', 'created_at', 'updated_at'
+            'total_budget', 'suppliers_info', 'remarks_history', 'created_at', 'updated_at',
+            'project_owner'  # 包含项目归属人字段
         ]
     
     def get_total_budget(self, obj):

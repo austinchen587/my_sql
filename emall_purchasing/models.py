@@ -44,6 +44,14 @@ class ProcurementPurchasing(models.Model):
         ('failed', '竞标失败'),
         ('cancelled', '已取消'),
     ]
+    # 添加项目归属人字段
+    project_owner = models.CharField(
+        max_length=100, 
+        blank=True, 
+        null=True, 
+        verbose_name='项目归属人',
+        default='未分配'
+    )
     
     procurement = models.OneToOneField(
         ProcurementEmall, 

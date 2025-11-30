@@ -25,3 +25,34 @@ def decode_username_from_header(encoded_username):
     except Exception as e:
         logger.warning(f"用户名解码失败，使用原始值: {encoded_username}, 错误: {str(e)}")
         return encoded_username
+
+def get_username_from_request(request):
+    """从请求中获取用户名（多种方式尝试）"""
+    username = "未知用户"
+    
+    # 1. 首先尝试从cookies获取username并解码
+    username_from_cookie = request.COOKIES.get('username')
+    if username_from_cookie:
+        username = urllib.parse.unquote(username_from_cookie)
+        logger.info(f"从cookie获取并解码用户名: {username}")
+    
+    # 2. 如果cookie中没有，尝试从session获取
+    elif request.session.get('username'):
+        username = request.session['username']
+        logger.info(f"从session获取用户名: {username}")
+    
+    # 3. 如果session中没有，尝试从认证用户获取
+    elif hasattr(request, 'user') and request.user.is_authenticated:
+        username = request.user.username
+        logger.info(f"从认证用户获取用户名: {username}")
+    
+    # 4. 如果都没有，尝试从请求头获取并解码
+    elif request.META.get('HTTP_X_USERNAME'):
+        encoded_username = request.METAget('HTTP_X_USERNAME')
+        username = decode_username_from_header(encoded_username)
+        logger.info(f"从请求头获取并解码用户名: {username}")
+    
+    else:
+        logger.warning("无法获取用户信息，使用'未知用户'")
+    
+    return username
