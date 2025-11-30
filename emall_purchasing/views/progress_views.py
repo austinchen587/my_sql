@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view
-from ..models import ProcurementPurchasing, ProcurementSupplier, ProcurementRemark
+from ..models import ProcurementPurchasing, ProcurementSupplier, ProcurementRemark, ClientContact  # 添加 ClientContact 导入
 from .utils import build_client_contacts, build_suppliers_info, build_remarks_history, safe_json_loads
 import logging
 import traceback
@@ -11,10 +11,8 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-
 class ProcurementProgressView(APIView):
     """采购进度管理视图"""
-    
     def get(self, request, procurement_id):
         """获取采购进度信息"""
         try:
@@ -25,7 +23,8 @@ class ProcurementProgressView(APIView):
             ).prefetch_related(
                 'suppliers',
                 'suppliers__commodities',
-                'remarks_history'
+                'remarks_history',
+                'client_contacts'
             ).get(procurement_id=procurement_id)
             
             logger.info(f"成功获取采购信息: {purchasing_info}")
@@ -34,15 +33,14 @@ class ProcurementProgressView(APIView):
             total_budget = purchasing_info.get_total_budget()
             budget_total = float(total_budget) if total_budget else 0
             
+            # 修复：传递正确的参数给 build_client_contacts
             response_data = {
                 'procurement_id': procurement_id,
                 'procurement_title': purchasing_info.procurement.project_title,
                 'procurement_number': purchasing_info.procurement.project_number,
                 'bidding_status': purchasing_info.bidding_status,
                 'bidding_status_display': purchasing_info.get_bidding_status_display(),
-                'client_contact': purchasing_info.client_contact or '',
-                'client_phone': purchasing_info.client_phone or '',
-                'client_contacts': build_client_contacts(purchasing_info.client_contact, purchasing_info.client_phone),
+                'client_contacts': build_client_contacts(purchasing_info),  # 保持单参数调用
                 'total_budget': budget_total,
                 'suppliers_info': build_suppliers_info(purchasing_info),
                 'remarks_history': build_remarks_history(purchasing_info),
@@ -82,14 +80,26 @@ def update_purchasing_info(request, procurement_id):
             purchasing_info.bidding_status = data['bidding_status']
             logger.info(f"更新竞标状态: {data['bidding_status']}")
         
-        if 'client_contact' in data:
-            purchasing_info.client_contact = data['client_contact'] or ''
-            logger.info(f"更新甲方联系人: {data['client_contact']}")
-        
-        if 'client_phone' in data:
-            purchasing_info.client_phone = data['client_phone'] or ''
-            logger.info(f"更新甲方联系方式: {data['client_phone']}")
+        # 更新联系人信息
+        if 'client_contacts' in data and isinstance(data['client_contacts'], list):
+            logger.info(f"开始更新联系人信息，数量: {len(data['client_contacts'])}")
+            # 删除现有联系人
+            purchasing_info.client_contacts.all().delete()
             
+            # 添加新联系人
+            contact_count = 0
+            for contact_data in data['client_contacts']:
+                if contact_data.get('name') or contact_data.get('contact_info'):
+                    ClientContact.objects.create(
+                        purchasing=purchasing_info,
+                        name=contact_data.get('name', ''),
+                        contact_info=contact_data.get('contact_info', '')
+                    )
+                    contact_count += 1
+                    logger.info(f"添加联系人: {contact_data.get('name')} - {contact_data.get('contact_info')}")
+            
+            logger.info(f"联系人更新完成，成功添加: {contact_count} 个联系人")
+        
         purchasing_info.save()
         logger.info("基础信息更新成功")
         

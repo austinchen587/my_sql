@@ -60,9 +60,6 @@ class ProcurementPurchasing(models.Model):
         verbose_name='竞标状态'
     )
     
-    # 甲方信息
-    client_contact = models.CharField(max_length=255, null=True, blank=True, verbose_name='甲方联系人')
-    client_phone = models.CharField(max_length=255, null=True, blank=True, verbose_name='甲方联系方式')
     
     # 关联供应商（支持多个供应商）
     suppliers = models.ManyToManyField(Supplier, through='ProcurementSupplier', related_name='procurements')
@@ -189,3 +186,23 @@ class ProcurementRemark(models.Model):
     
     def __str__(self):
         return f"{self.purchasing.procurement.project_title} - 备注"
+
+
+class ClientContact(models.Model):
+    """甲方联系人模型"""
+    purchasing = models.ForeignKey(
+        ProcurementPurchasing, 
+        on_delete=models.CASCADE, 
+        related_name='client_contacts'
+    )
+    name = models.CharField(max_length=255, verbose_name='联系人姓名')
+    contact_info = models.CharField(max_length=255, verbose_name='联系方式')
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'procurement_client_contacts'
+        verbose_name = '甲方联系人'
+        verbose_name_plural = '甲方联系人'
+    
+    def __str__(self):
+        return f"{self.name} - {self.contact_info}"

@@ -54,11 +54,37 @@ def calculate_profit(total_budget, total_quote):
         logger.warning(f"预算金额格式错误，使用默认值0: {total_budget}")
         return Decimal('0')
 
-def build_client_contacts(client_contact, client_phone):
-    """构建客户联系人数组"""
-    if client_contact and client_phone:
-        return [{'name': client_contact, 'phone': client_phone}]
-    return []
+def build_client_contacts(purchasing_info):
+    """构建客户联系人数组 - 从 ClientContact 模型获取"""
+    try:
+        contacts = []
+        
+        # 从 client_contacts 关联关系中获取联系人
+        if hasattr(purchasing_info, 'client_contacts'):
+            for contact in purchasing_info.client_contacts.all():
+                contacts.append({
+                    'id': contact.id,
+                    'name': contact.name or '',
+                    'contact_info': contact.contact_info or ''
+                })
+        
+        # 如果没有联系人，提供默认的空联系人
+        if not contacts:
+            contacts.append({
+                'id': 0,
+                'name': '',
+                'contact_info': ''
+            })
+        
+        return contacts
+        
+    except Exception as e:
+        logger.error(f"构建联系人信息失败: {str(e)}")
+        return [{
+            'id': 0,
+            'name': '',
+            'contact_info': ''
+        }]
 
 def build_suppliers_info(purchasing_info):
     """构建供应商信息"""
