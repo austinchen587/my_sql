@@ -214,3 +214,53 @@ class ClientContact(models.Model):
     
     def __str__(self):
         return f"{self.name} - {self.contact_info}"
+    
+
+class UnifiedProcurementRemark(models.Model):
+        """统一的采购项目备注系统"""
+        procurement = models.ForeignKey(
+            'emall.ProcurementEmall',
+            on_delete=models.CASCADE,
+            related_name='unified_remarks'
+        )
+        remark_content = models.TextField(verbose_name='备注内容')
+        created_by = models.CharField(max_length=100, verbose_name='创建人')
+        
+        # 可选：关联采购进度（如果存在）
+        purchasing = models.ForeignKey(
+            'ProcurementPurchasing',
+            on_delete=models.SET_NULL,
+            null=True,
+            blank=True,
+            related_name='purchasing_remarks'
+        )
+        
+        remark_type = models.CharField(
+            max_length=20,
+            choices=[
+                ('general', '普通备注'),
+                ('purchasing', '采购进度备注'),
+                ('client', '客户沟通备注')
+            ],
+            default='general',
+            verbose_name='备注类型'
+        )
+        
+        created_at = models.DateTimeField(auto_now_add=True)
+        updated_at = models.DateTimeField(auto_now=True)
+        class Meta:
+            db_table = 'unified_procurement_remarks'
+            verbose_name = '统一采购备注'
+            verbose_name_plural = verbose_name
+            ordering = ['-created_at']
+        
+        def __str__(self):
+            return f"{self.procurement.project_title} - {self.get_remark_type_display()} - {self.created_at.strftime('%Y-%m-%d')}"
+        
+        @classmethod
+        def get_latest_remark(cls, procurement_id):
+            """获取项目的最新备注"""
+            try:
+                return cls.objects.filter(procurement_id=procurement_id).first()
+            except cls.DoesNotExist:
+                return None
