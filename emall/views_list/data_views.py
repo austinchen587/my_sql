@@ -12,8 +12,27 @@ from .utils import convert_price_to_number
 from ..models import ProcurementEmall
 from emall_purchasing.models import ProcurementPurchasing
 from ..serializers import ProcurementEmallSerializer
+import urllib.parse
+import base64
 
 logger = logging.getLogger(__name__)
+
+def decode_parameter(param_value):
+    """解码前端传递的参数（支持多种编码方式）"""
+    if not param_value:
+        return param_value
+        
+    try:
+        # 先尝试URL解码（处理 %E9%99%88%E4%BA%88%E7%90%B3 这种情况）
+        decoded = urllib.parse.unquote(param_value)
+        logger.info(f"🔍 参数解码: '{param_value}' -> '{decoded}'")
+        return decoded
+    except Exception as e:
+        logger.warning(f"参数解码失败，使用原始值: {param_value}, 错误: {e}")
+        return param_value
+
+
+
 
 class ProcurementListDataView(ListAPIView):
     """采购列表数据视图"""
@@ -24,6 +43,39 @@ class ProcurementListDataView(ListAPIView):
 
     def get_queryset(self):
         queryset = ProcurementEmall.objects.all()
+        
+        # 🔧 使用 print 强制输出调试信息
+        print(f"=== 🚨 DEBUG: 开始处理查询参数 ===")
+        print(f"所有查询参数: {dict(self.request.query_params)}")
+        
+        project_owner = self.request.query_params.get('project_owner')
+        print(f"🚨 DEBUG: 原始 project_owner 参数: '{project_owner}'")
+        print(f"🚨 DEBUG: 参数类型: {type(project_owner)}")
+        
+        if project_owner:
+            try:
+                # 🔧 直接调用解码
+                decoded = urllib.parse.unquote(project_owner)
+                print(f"🚨 DEBUG: 解码结果: '{project_owner}' -> '{decoded}'")
+                
+                project_owner = decoded.strip()
+                print(f"🚨 DEBUG: 处理后 project_owner: '{project_owner}'")
+                
+                if project_owner:
+                    selected_procurements = ProcurementPurchasing.objects.filter(
+                        project_owner__icontains=project_owner
+                    ).values_list('procurement_id', flat=True)
+                    
+                    print(f"🚨 DEBUG: 匹配记录数量: {len(selected_procurements)}")
+                    print(f"🚨 DEBUG: 匹配的采购ID: {list(selected_procurements)}")
+                    
+                    queryset = queryset.filter(id__in=selected_procurements)
+                    print(f"🚨 DEBUG: 筛选后结果数量: {queryset.count()}")
+                    
+            except Exception as e:
+                print(f"🚨 ERROR: 筛选项目归属人时出错: {e}")
+        
+        
         
         # 处理只看已选择项目的筛选
         show_selected_only = self.request.query_params.get('show_selected_only')
@@ -131,17 +183,6 @@ class ProcurementDetailView(RetrieveAPIView):
         try:
             instance = self.get_object()
             
-            # 调试实例的数组字段
-            print(f"\n🎯 实例数组字段原始值:")
-            print(f"📦 commodity_names: {instance.commodity_names} (类型: {type(instance.commodity_names)})")
-            print(f"📦 parameter_requirements: {instance.parameter_requirements}")
-            print(f"📦 purchase_quantities: {instance.purchase_quantities}")
-            print(f"📦 control_amounts: {instance.control_amounts}")
-            print(f"📦 suggested_brands: {instance.suggested_brands}")
-            print(f"📦 business_items: {instance.business_items}")
-            print(f"📦 business_requirements: {instance.business_requirements}")
-            print(f"📦 related_links: {instance.related_links}")
-            print(f"📦 download_files: {instance.download_files}")
             
             serializer = self.get_serializer(instance)
             response_data = serializer.data

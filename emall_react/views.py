@@ -7,7 +7,8 @@ from .filters import ProcurementEmallFilter
 from .pagination import EmallPagination
 from .utils import get_numeric_price_for_item, check_price_condition
 from django.db.models import Prefetch
-from emall_purchasing.models import ProcurementPurchasing, ProcurementRemark  # 添加导入
+from emall_purchasing.models import ProcurementPurchasing, ProcurementRemark
+import urllib.parse  # 添加导入
 
 class EmallListView(generics.ListAPIView):
     """
@@ -50,6 +51,25 @@ class EmallListView(generics.ListAPIView):
             )
         ).order_by('-publish_date', '-id')
         
+        # 🔧 新增：项目归属人筛选逻辑
+        project_owner = self.request.query_params.get('project_owner')
+        if project_owner:
+            try:
+                # Django 可能已经自动解码了参数，但为了安全还是解码一次
+                decoded_owner = urllib.parse.unquote(project_owner)
+                print(f"🚨 DEBUG: 项目归属人筛选 - 原始: '{project_owner}', 解码后: '{decoded_owner}'")
+                
+                # 通过 ProcurementPurchasing 表进行筛选
+                selected_procurements = ProcurementPurchasing.objects.filter(
+                    project_owner__icontains=decoded_owner.strip()
+                ).values_list('procurement_id', flat=True)
+                
+                print(f"🚨 DEBUG: 匹配的项目归属人记录数量: {len(selected_procurements)}")
+                queryset = queryset.filter(id__in=selected_procurements)
+                
+            except Exception as e:
+                print(f"🚨 ERROR: 项目归属人筛选失败: {e}")
+        
         # 价格条件筛选逻辑
         price_condition = self.request.query_params.get('total_price_condition')
         
@@ -82,13 +102,5 @@ class EmallListView(generics.ListAPIView):
         print(f"📋 请求参数: {dict(request.query_params)}")
         response = super().list(request, *args, **kwargs)
         print(f"📦 响应数据包含 {len(response.data.get('results', []))} 个项目")
-        
-        # 调试输出第一个项目的数据结构
-        if response.data.get('results'):
-            first_item = response.data['results'][0]
-            print(f"🔍 第一个项目数据结构: {list(first_item.keys())}")
-            print(f"📝 第一个项目备注: {first_item.get('latest_remark')}")
-            print(f"👤 第一个项目归属人: {first_item.get('project_owner')}")
-            print(f"🏢 第一个项目供应商数量: {first_item.get('suppliers_count')}")
         
         return response

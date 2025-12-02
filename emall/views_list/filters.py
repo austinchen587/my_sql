@@ -7,6 +7,7 @@ class ProcurementEmallFilter(filters.FilterSet):
     purchasing_unit = filters.CharFilter(lookup_expr='icontains')
     project_number = filters.CharFilter(lookup_expr='icontains')  # 添加项目编号过滤器
     total_price_control = filters.CharFilter(lookup_expr='icontains')
+
     # 移除地区过滤器: region = filters.CharFilter(lookup_expr='icontains')
     
     class Meta:

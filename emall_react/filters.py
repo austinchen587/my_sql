@@ -12,10 +12,11 @@ class ProcurementEmallFilter(FilterSet):
     project_number = CharFilter(field_name='project_number', lookup_expr='icontains', label='项目编号')
     total_price_control = CharFilter(field_name='total_price_control', lookup_expr='icontains', label='控制总价')
     show_selected_only = BooleanFilter(method='filter_selected_only', label='只看选择项目')
+    project_owner = CharFilter(method='filter_project_owner', label='项目归属人')  # 新增
     
     class Meta:
         model = ProcurementEmall
-        fields = ['project_title', 'purchasing_unit', 'project_number', 'total_price_control', 'show_selected_only']
+        fields = ['project_title', 'purchasing_unit', 'project_number', 'total_price_control', 'show_selected_only', 'project_owner']
     
     def filter_selected_only(self, queryset, name, value):
         """只看选择项目的筛选逻辑"""
@@ -25,4 +26,18 @@ class ProcurementEmallFilter(FilterSet):
                 is_selected=True
             ).values_list('procurement_id', flat=True)
             return queryset.filter(id__in=selected_ids)
+        return queryset
+    
+    def filter_project_owner(self, queryset, name, value):
+        """项目归属人筛选逻辑"""
+        if value:
+            try:
+                import urllib.parse
+                decoded_value = urllib.parse.unquote(value)
+                selected_ids = ProcurementPurchasing.objects.filter(
+                    project_owner__icontains=decoded_value.strip()
+                ).values_list('procurement_id', flat=True)
+                return queryset.filter(id__in=selected_ids)
+            except Exception:
+                return queryset
         return queryset

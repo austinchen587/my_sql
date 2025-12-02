@@ -17,6 +17,12 @@ class ProcurementEmallSerializer(serializers.ModelSerializer):
     business_requirements = serializers.SerializerMethodField()
     related_links = serializers.SerializerMethodField()
     download_files = serializers.SerializerMethodField()
+
+     # 新增字段
+    project_owner = serializers.SerializerMethodField()
+    is_selected = serializers.SerializerMethodField()
+    bidding_status = serializers.SerializerMethodField()
+    bidding_status_display = serializers.SerializerMethodField()
     
     def _flatten_array(self, value):
         """展平双重嵌套的数组"""
@@ -41,16 +47,6 @@ class ProcurementEmallSerializer(serializers.ModelSerializer):
         # 如果是字符串或其他类型，包装成列表
         return [value] if value else []
     
-    # 为所有数组字段添加自定义序列化
-    commodity_names = serializers.SerializerMethodField()
-    parameter_requirements = serializers.SerializerMethodField()
-    purchase_quantities = serializers.SerializerMethodField()
-    control_amounts = serializers.SerializerMethodField()
-    suggested_brands = serializers.SerializerMethodField()
-    business_items = serializers.SerializerMethodField()
-    business_requirements = serializers.SerializerMethodField()
-    related_links = serializers.SerializerMethodField()
-    download_files = serializers.SerializerMethodField()
     
     def get_commodity_names(self, obj):
         return self._flatten_array(obj.commodity_names)
@@ -78,6 +74,34 @@ class ProcurementEmallSerializer(serializers.ModelSerializer):
     
     def get_download_files(self, obj):
         return self._flatten_array(obj.download_files)
+    def get_project_owner(self, obj):
+        """从 ProcurementPurchasing 获取项目归属人"""
+        try:
+            print(f"🔍 序列化器调试 - 项目ID: {obj.id}")
+            
+            purchasing_info = self.context.get('purchasing_info')
+            if purchasing_info:
+                print(f"🔍 从purchasing_info获取: {purchasing_info.project_owner}")
+                return purchasing_info.project_owner
+            
+            purchasing_info_map = self.context.get('purchasing_info_map', {})
+            if obj.id in purchasing_info_map:
+                owner = purchasing_info_map[obj.id].project_owner
+                print(f"🔍 从purchasing_info_map获取: {owner}")
+                return owner
+            
+            purchasing_info = ProcurementPurchasing.objects.filter(
+                procurement_id=obj.id
+            ).first()
+            owner = purchasing_info.project_owner if purchasing_info else '未分配'
+            print(f"🔍 从数据库查询获取: {owner}")
+            return owner
+            
+        except Exception as e:
+            print(f"❌ 获取project_owner错误: {e}")
+        return '未分配'
+    
+    
     
     total_price_numeric = serializers.SerializerMethodField()
     
@@ -94,7 +118,8 @@ class ProcurementEmallSerializer(serializers.ModelSerializer):
             'parameter_requirements', 'purchase_quantities', 
             'control_amounts', 'suggested_brands', 'business_items',
             'business_requirements', 'related_links', 'download_files',
-            'total_price_numeric'
+            'total_price_numeric','project_owner',
+            'is_selected', 'bidding_status', 'bidding_status_display'
         ]
     
     def to_representation(self, instance):
