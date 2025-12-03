@@ -1,3 +1,4 @@
+# analysis/services/daily_profit_service.py
 from django.db import connection
 
 class DailyProfitService:
@@ -42,31 +43,39 @@ class DailyProfitService:
                 )),
                 0
             ) as total_quote,
-            -- 利润计算：total_price_control - total_quote
-            (CASE 
-                WHEN pe.total_price_control IS NULL OR pe.total_price_control = '-' THEN 0
-                WHEN pe.total_price_control LIKE '%万元%' AND pe.total_price_control NOT LIKE '%元万元%' THEN 
-                    CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC) * 10000
-                WHEN pe.total_price_control LIKE '%元万元%' THEN 
-                    CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC)
-                WHEN pe.total_price_control LIKE '%元%' AND pe.total_price_control NOT LIKE '%万元%' THEN 
-                    CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC)
+            -- 利润计算：如果供应商显示为"询价中"，则利润为0，否则正常计算
+            CASE 
+                WHEN COALESCE(
+                    MAX(CASE WHEN psr.is_selected = true THEN ps.name END),
+                    MAX(ps.name),
+                    '询价中'
+                ) = '询价中' THEN 0
                 ELSE 
-                    COALESCE(CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC), 0)
-            END) - 
-            COALESCE(
-                MAX(CASE WHEN psr.is_selected = true THEN (
-                    SELECT SUM(sc.price * sc.quantity)
-                    FROM supplier_commodities sc
-                    WHERE sc.supplier_id = ps.id
-                ) END),
-                MAX((
-                    SELECT SUM(sc.price * sc.quantity)
-                    FROM supplier_commodities sc
-                    WHERE sc.supplier_id = ps.id
-                )),
-                0
-            ) as profit,
+                    (CASE 
+                        WHEN pe.total_price_control IS NULL OR pe.total_price_control = '-' THEN 0
+                        WHEN pe.total_price_control LIKE '%万元%' AND pe.total_price_control NOT LIKE '%元万元%' THEN 
+                            CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC) * 10000
+                        WHEN pe.total_price_control LIKE '%元万元%' THEN 
+                            CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC)
+                        WHEN pe.total_price_control LIKE '%元%' AND pe.total_price_control NOT LIKE '%万元%' THEN 
+                            CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC)
+                        ELSE 
+                            COALESCE(CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC), 0)
+                    END) - 
+                    COALESCE(
+                        MAX(CASE WHEN psr.is_selected = true THEN (
+                            SELECT SUM(sc.price * sc.quantity)
+                            FROM supplier_commodities sc
+                            WHERE sc.supplier_id = ps.id
+                        ) END),
+                        MAX((
+                            SELECT SUM(sc.price * sc.quantity)
+                            FROM supplier_commodities sc
+                            WHERE sc.supplier_id = ps.id
+                        )),
+                        0
+                    )
+            END as profit,
             -- 最新备注
             (
                 SELECT pr.remark_content 
