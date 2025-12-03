@@ -30,6 +30,7 @@ urlpatterns = [
     #react 测试路径
     path('api/', include('emall_react.urls')),
     path('api/auth/', include('authentication.urls')),
+    path('api/analysis/', include('analysis.urls')),
 ]
 
 

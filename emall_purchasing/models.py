@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.postgres.fields import ArrayField
 import re  # 导入正则表达式模块
 from emall.models import ProcurementEmall
+from django.utils import timezone
 
 class Supplier(models.Model):
     """供应商模型"""
@@ -59,6 +60,8 @@ class ProcurementPurchasing(models.Model):
         related_name='purchasing_info'
     )
     is_selected = models.BooleanField(default=False, verbose_name='是否选择采购')
+    selected_at = models.DateTimeField(null=True, blank=True, verbose_name='选择时间')
+    unselected_at = models.DateTimeField(null=True, blank=True, verbose_name='取消选择时间')
     
     # 竞标状态
     bidding_status = models.CharField(
@@ -82,6 +85,25 @@ class ProcurementPurchasing(models.Model):
 
     def __str__(self):
         return f"{self.procurement.project_title} - 采购信息"
+    
+    def save(self, *args, **kwargs):
+        """重写save方法自动记录选择状态变化时间"""
+        if self.pk:  # 只对已存在的实例
+            try:
+                old_instance = ProcurementPurchasing.objects.get(pk=self.pk)
+                if old_instance.is_selected != self.is_selected:
+                    if self.is_selected:  # 从 False → True
+                        self.selected_at = timezone.now()
+                        self.unselected_at = None
+                    else:  # 从 True → False
+                        self.unselected_at = timezone.now()
+                        self.selected_at = None
+            except ProcurementPurchasing.DoesNotExist:
+                pass
+        elif self.is_selected:  # 新实例且为True
+            self.selected_at = timezone.now()
+            
+        super().save(*args, **kwargs)
     
     def get_total_budget(self):
         """获取项目总预算"""

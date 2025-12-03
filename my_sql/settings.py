@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'emall',
     'emall_purchasing',
     'emall_react',
+    'analysis',
     
 ]
 
