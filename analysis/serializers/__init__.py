@@ -1,3 +1,4 @@
 from .dashboard import DashboardStatsSerializer
 from .status_stats import ProcurementStatusStatsSerializer
-__all__ = ['DashboardStatsSerializer', 'ProcurementStatusStatsSerializer']
+from .status_stats_owner import ProcurementStatusStatsOwnerSerializer
+__all__ = ['DashboardStatsSerializer', 'ProcurementStatusStatsSerializer','ProcurementStatusStatsOwnerSerializer']
