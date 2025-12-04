@@ -1,5 +1,6 @@
 # analysis/services/daily_profit_service.py
 from django.db import connection
+from django.utils import timezone
 
 class DailyProfitService:
     """每日利润统计服务"""
@@ -85,14 +86,15 @@ class DailyProfitService:
                 LIMIT 1
             ) as latest_remark
         FROM procurement_emall pe
-        -- 内连接：只获取当天发布且采购项目被选中的记录
+        -- 内连接：只获取采购项目被选中的记录
         INNER JOIN procurement_purchasing pp ON pe.id = pp.procurement_id AND pp.is_selected = true
         -- 左连接：关联供应商（可能没有供应商）
         LEFT JOIN procurement_supplier_relation psr ON pp.id = psr.procurement_id
         LEFT JOIN procurement_suppliers ps ON psr.supplier_id = ps.id
         WHERE 
-            -- 第一个条件：当天发布，匹配格式 "2025.12.03"
-            pe.publish_date = TO_CHAR(CURRENT_DATE, 'YYYY.MM.DD')
+            -- 修改条件：使用selected_at字段筛选当天的记录
+            pp.selected_at >= CURRENT_DATE 
+            AND pp.selected_at < CURRENT_DATE + INTERVAL '1 day'
         GROUP BY 
             pe.project_name, 
             pp.project_owner,
