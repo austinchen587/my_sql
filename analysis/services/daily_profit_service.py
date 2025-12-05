@@ -24,33 +24,28 @@ class DailyProfitService:
                 ELSE 
                     COALESCE(CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC), 0)
             END as total_price_control,
-            -- 供应商名称：优先显示选中的供应商，否则显示第一个供应商，没有则提示"询价中"
+            -- 供应商名称：显示所有被选中供应商的名称，用逗号分隔
             COALESCE(
-                MAX(CASE WHEN psr.is_selected = true THEN ps.name END),
-                MAX(ps.name),
+                STRING_AGG(
+                    CASE WHEN psr.is_selected = true THEN ps.name ELSE NULL END, 
+                    ', '
+                ),
                 '询价中'
             ) as supplier_name,
-            -- 总报价：优先计算选中供应商的，否则计算第一个供应商的
+            -- 总报价：计算所有被选中供应商的总报价
             COALESCE(
-                MAX(CASE WHEN psr.is_selected = true THEN (
-                    SELECT SUM(sc.price * sc.quantity)
-                    FROM supplier_commodities sc
-                    WHERE sc.supplier_id = ps.id
-                ) END),
-                MAX((
-                    SELECT SUM(sc.price * sc.quantity)
-                    FROM supplier_commodities sc
-                    WHERE sc.supplier_id = ps.id
-                )),
+                SUM(
+                    CASE WHEN psr.is_selected = true THEN (
+                        SELECT SUM(sc.price * sc.quantity)
+                        FROM supplier_commodities sc
+                        WHERE sc.supplier_id = ps.id
+                    ) ELSE 0 END
+                ),
                 0
             ) as total_quote,
-            -- 利润计算：如果供应商显示为"询价中"，则利润为0，否则正常计算
+            -- 利润计算：总预算 - 所有被选中供应商的总报价
             CASE 
-                WHEN COALESCE(
-                    MAX(CASE WHEN psr.is_selected = true THEN ps.name END),
-                    MAX(ps.name),
-                    '询价中'
-                ) = '询价中' THEN 0
+                WHEN COUNT(CASE WHEN psr.is_selected = true THEN 1 ELSE NULL END) = 0 THEN 0
                 ELSE 
                     (CASE 
                         WHEN pe.total_price_control IS NULL OR pe.total_price_control = '-' THEN 0
@@ -64,16 +59,13 @@ class DailyProfitService:
                             COALESCE(CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC), 0)
                     END) - 
                     COALESCE(
-                        MAX(CASE WHEN psr.is_selected = true THEN (
-                            SELECT SUM(sc.price * sc.quantity)
-                            FROM supplier_commodities sc
-                            WHERE sc.supplier_id = ps.id
-                        ) END),
-                        MAX((
-                            SELECT SUM(sc.price * sc.quantity)
-                            FROM supplier_commodities sc
-                            WHERE sc.supplier_id = ps.id
-                        )),
+                        SUM(
+                            CASE WHEN psr.is_selected = true THEN (
+                                SELECT SUM(sc.price * sc.quantity)
+                                FROM supplier_commodities sc
+                                WHERE sc.supplier_id = ps.id
+                            ) ELSE 0 END
+                        ),
                         0
                     )
             END as profit,

@@ -87,26 +87,48 @@ def build_client_contacts(purchasing_info):
         }]
 
 def build_suppliers_info(purchasing_info):
-    """构建供应商信息"""
+    """构建供应商信息（基于所有被选中供应商的总报价计算利润）"""
     suppliers_info = []
     
+    # 计算所有被选中供应商的总报价
+    total_selected_quote = Decimal('0')
+    selected_supplier_ids = []
+    
+    # 先计算总报价
+    for supplier in purchasing_info.suppliers.all():
+        supplier_rel = purchasing_info.procurementsupplier_set.filter(supplier=supplier).first()
+        if supplier_rel and supplier_rel.is_selected:
+            total_quote, _ = calculate_total_quote(supplier.commodities)
+            total_selected_quote += total_quote
+            selected_supplier_ids.append(supplier.id)
+    
+    # 计算总利润
+    total_budget = purchasing_info.get_total_budget()
+    total_profit = calculate_profit(total_budget, total_selected_quote)
+    
+    # 构建供应商信息
     for supplier in purchasing_info.suppliers.all():
         supplier_rel = purchasing_info.procurementsupplier_set.filter(supplier=supplier).first()
         total_quote, commodities = calculate_total_quote(supplier.commodities)
-        total_budget = purchasing_info.get_total_budget()
-        profit = calculate_profit(total_budget, total_quote)
         
-        suppliers_info.append({
+        supplier_data = {
             'id': supplier.id,
             'name': supplier.name,
             'source': supplier.source,
-            'contact': supplier.contact,  # 修复这里：添加了缺失的引号
+            'contact': supplier.contact,
             'store_name': supplier.store_name,
             'commodities': commodities,
             'total_quote': float(total_quote),
-            'profit': float(profit),
             'is_selected': supplier_rel.is_selected if supplier_rel else False
-        })
+        }
+        
+        # 利润计算：如果是被选中的供应商，显示总利润；否则利润为0
+        if supplier_rel and supplier_rel.is_selected:
+            supplier_data['profit'] = float(total_profit)
+        else:
+            supplier_data['profit'] = 0
+            
+        suppliers_info.append(supplier_data)
     
     return suppliers_info
 

@@ -147,22 +147,38 @@ class ProcurementPurchasing(models.Model):
             return 0
     
     def get_suppliers_info(self):
-        """获取供应商信息（包含利润计算）"""
+        """获取供应商信息（基于所有被选中供应商的总报价计算利润）"""
         suppliers_info = []
+        
+        # 计算所有被选中供应商的总报价
+        total_selected_quote = 0
+        selected_suppliers = []
+        
+        # 先遍历所有供应商关系，计算总报价
         for procurement_supplier in self.procurementsupplier_set.all():
             supplier = procurement_supplier.supplier
             total_quote = procurement_supplier.get_total_quote()
-            budget = self.get_total_budget()
-            profit = budget - total_quote if budget > 0 else 0
             
-            suppliers_info.append({
+            if procurement_supplier.is_selected:
+                total_selected_quote += total_quote
+                selected_suppliers.append(supplier.id)
+        
+        # 计算总利润
+        budget = self.get_total_budget()
+        total_profit = budget - total_selected_quote if budget > 0 else 0
+        
+        # 再次遍历，构建供应商信息
+        for procurement_supplier in self.procurementsupplier_set.all():
+            supplier = procurement_supplier.supplier
+            supplier_quote = procurement_supplier.get_total_quote()
+            
+            supplier_data = {
                 'id': supplier.id,
                 'name': supplier.name,
                 'source': supplier.source,
                 'contact': supplier.contact,
                 'store_name': supplier.store_name,
-                'total_quote': float(total_quote) if total_quote else 0,
-                'profit': profit,
+                'total_quote': float(supplier_quote) if supplier_quote else 0,
                 'is_selected': procurement_supplier.is_selected,
                 'commodities': [
                     {
@@ -173,7 +189,16 @@ class ProcurementPurchasing(models.Model):
                     }
                     for commodity in supplier.commodities.all()
                 ]
-            })
+            }
+            
+            # 利润计算：如果是被选中的供应商，显示总利润；否则利润为0
+            if procurement_supplier.is_selected:
+                supplier_data['profit'] = float(total_profit) if total_profit > 0 else 0
+            else:
+                supplier_data['profit'] = 0
+                
+            suppliers_info.append(supplier_data)
+        
         return suppliers_info
 
 class ProcurementSupplier(models.Model):
