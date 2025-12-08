@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'emall_purchasing',
     'emall_react',
     'analysis',
+    'supplier_management',
     
 ]
 

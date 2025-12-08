@@ -1,3 +1,4 @@
+#my_sql/emall/models.py
 from django.contrib.postgres.fields import ArrayField  # 关键
 from django.db import models
 

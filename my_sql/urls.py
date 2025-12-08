@@ -31,6 +31,7 @@ urlpatterns = [
     path('api/', include('emall_react.urls')),
     path('api/auth/', include('authentication.urls')),
     path('api/analysis/', include('analysis.urls')),
+    path('api/supplier/', include('supplier_management.urls')),
 ]
 
 

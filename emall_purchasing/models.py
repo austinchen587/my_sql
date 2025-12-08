@@ -1,3 +1,4 @@
+#my_sql/emall_purchasing/models.py
 from django.db import models
 from django.contrib.postgres.fields import ArrayField
 import re  # 导入正则表达式模块
