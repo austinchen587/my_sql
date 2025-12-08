@@ -7,6 +7,8 @@ from .serializers import RegisterSerializer
 import json
 import logging
 from django.views.decorators.http import require_http_methods
+from .models import UserProfile
+from django.contrib.auth.decorators import login_required
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +28,28 @@ def user_login(request):
                     'message': '用户名和密码不能为空'
                 }, status=400)
             
-            user = authenticate(request, username=username,password=password)
+            user = authenticate(request, username=username, password=password)
             if user is not None:
                 login(request, user)
-                logger.info(f"用户登录成功: {username}")
+                
+                # 获取用户角色
+                try:
+                    user_role = user.userprofile.role
+                except UserProfile.DoesNotExist:
+                    # 如果用户配置不存在，创建默认配置
+                    UserProfile.objects.create(user=user, role='unassigned')  # 改为 unassigned
+                    user_role = 'unassigned'
+                
+                logger.info(f"用户登录成功: {username}, 角色: {user_role}")
+                
                 return JsonResponse({
                     'status': 'success',
                     'message': '登录成功',
                     'user': {
                         'id': user.id,
                         'username': user.username,
-                        'email': user.email
+                        'email': user.email,
+                        'role': user_role
                     }
                 })
             else:
@@ -106,6 +119,16 @@ def user_register(request):
                 user = serializer.save()
                 logger.info(f"用户创建成功: {user.username}")
                 
+                # 获取用户角色（信号已经创建了 UserProfile）
+                try:
+                    user_role = user.userprofile.role
+                    logger.info(f"UserProfile 已存在，角色: {user_role}")
+                except UserProfile.DoesNotExist:
+                    # 如果信号没有创建，则创建默认配置
+                    UserProfile.objects.create(user=user, role='unassigned')
+                    user_role = 'unassigned'
+                    logger.info(f"UserProfile 创建成功，角色: {user_role}")
+                
                 # 自动登录新用户
                 login(request, user)
                 logger.info(f"用户自动登录成功: {user.username}")
@@ -116,14 +139,14 @@ def user_register(request):
                     'user': {
                         'id': user.id,
                         'username': user.username,
-                        'email': user.email
+                        'email': user.email,
+                        'role': user_role
                     }
                 })
             else:
                 errors = serializer.errors
                 logger.warning(f"序列化器验证失败: {errors}")
                 
-                # 更详细的错误消息处理
                 error_messages = []
                 for field, field_errors in errors.items():
                     for error in field_errors:
@@ -160,12 +183,21 @@ def get_current_user(request):
     if request.method == 'GET':
         try:
             if request.user.is_authenticated:
+                # 获取用户角色
+                try:
+                    user_role = request.user.userprofile.role
+                except UserProfile.DoesNotExist:
+                    # 如果 UserProfile 不存在，创建默认配置
+                    UserProfile.objects.create(user=request.user, role='unassigned')
+                    user_role = 'unassigned'
+                
                 return JsonResponse({
                     'status': 'success',
                     'user': {
                         'id': request.user.id,
                         'username': request.user.username,
-                        'email': request.user.email
+                        'email': request.user.email,
+                        'role': user_role
                     }
                 })
             else:
@@ -187,19 +219,40 @@ def get_current_user(request):
     
 
 @csrf_exempt
-@require_http_methods(["GET"])
 def check_session(request):
-    if request.user.is_authenticated:
-        return JsonResponse({
-            'status': 'success',
-            'user': {
-                'id': request.user.id,
-                'username': request.user.username,
-                'email': request.user.email
-            }
-        })
-    else:
+    """检查用户会话状态"""
+    try:
+        if request.user.is_authenticated:
+            user = request.user
+            
+            # 正确获取用户角色
+            try:
+                user_role = user.userprofile.role
+            except UserProfile.DoesNotExist:
+                # 如果 UserProfile 不存在，创建默认配置
+                UserProfile.objects.create(user=user, role='unassigned')
+                user_role = 'unassigned'
+            
+            return JsonResponse({
+                'status': 'success',
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'role': user_role
+                }
+            })
+        else:
+            # 用户未登录，返回未认证状态，而不是重定向
+            return JsonResponse({
+                'status': 'error',
+                'message': '用户未登录',
+                'authenticated': False
+            }, status=401)
+            
+    except Exception as e:
+        logger.error(f"检查会话错误: {str(e)}")
         return JsonResponse({
             'status': 'error',
-            'message': 'Not authenticated'
-        }, status=200)  # 返回 200 而不是 401，避免前端错误
+            'message': str(e)
+        }, status=400)
