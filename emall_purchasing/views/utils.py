@@ -87,7 +87,7 @@ def build_client_contacts(purchasing_info):
         }]
 
 def build_suppliers_info(purchasing_info):
-    """构建供应商信息（包含审计字段）"""
+    """构建供应商信息（包含完整的审计字段）"""
     suppliers_info = []
     
     # 计算所有被选中供应商的总报价
@@ -120,16 +120,20 @@ def build_suppliers_info(purchasing_info):
             'commodities': commodities,
             'total_quote': float(total_quote),
             'is_selected': supplier_rel.is_selected if supplier_rel else False,
-            # 新增审计字段信息
+            # 新增完整的审计字段信息
             'purchaser_created_by': supplier.purchaser_created_by,
             'purchaser_created_role': supplier.purchaser_created_role,
+            'purchaser_created_at': supplier.purchaser_created_at,
             'purchaser_updated_by': supplier.purchaser_updated_by,
             'purchaser_updated_role': supplier.purchaser_updated_role,
+            'purchaser_updated_at': supplier.purchaser_updated_at,
             'supplier_relation_info': {
                 'purchaser_created_by': supplier_rel.purchaser_created_by if supplier_rel else None,
                 'purchaser_created_role': supplier_rel.purchaser_created_role if supplier_rel else None,
+                'purchaser_created_at': supplier_rel.purchaser_created_at if supplier_rel else None,
                 'purchaser_updated_by': supplier_rel.purchaser_updated_by if supplier_rel else None,
                 'purchaser_updated_role': supplier_rel.purchaser_updated_role if supplier_rel else None,
+                'purchaser_updated_at': supplier_rel.purchaser_updated_at if supplier_rel else None,
             } if supplier_rel else None
         }
         

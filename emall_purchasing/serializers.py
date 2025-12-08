@@ -8,24 +8,24 @@ class SupplierCommoditySerializer(serializers.ModelSerializer):
         model = SupplierCommodity
         fields = [
             'id', 'name', 'specification', 'price', 'quantity', 'product_url',
-            'purchaser_created_by', 'purchaser_created_role'  # 新增审计字段
+            'purchaser_created_by', 'purchaser_created_role', 'purchaser_created_at'  # 新增审计字段
         ]
-        read_only_fields = ('purchaser_created_by', 'purchaser_created_role')  # 审计字段只读
+        read_only_fields = ('purchaser_created_by', 'purchaser_created_role', 'purchaser_created_at')  # 审计字段只读
 
 class SupplierSerializer(serializers.ModelSerializer):
-    commodities = SupplierCommoditySerializer(many=True, read_only=True)
+    commodities = SupplierCommoditySerializer(many=True,read_only=True)
     total_quote = serializers.SerializerMethodField()
     
     class Meta:
         model = Supplier
         fields = [
             'id', 'name', 'source', 'contact', 'store_name', 'commodities', 'total_quote',
-            'purchaser_created_by', 'purchaser_created_role',  # 新增审计字段
-            'purchaser_updated_by', 'purchaser_updated_role'   # 新增审计字段
+            'purchaser_created_by', 'purchaser_created_role', 'purchaser_created_at',  # 新增审计字段
+            'purchaser_updated_by', 'purchaser_updated_role', 'purchaser_updated_at'   # 新增审计字段
         ]
         read_only_fields = (
-            'purchaser_created_by', 'purchaser_created_role',  # 审计字段只读
-            'purchaser_updated_by', 'purchaser_updated_role'
+            'purchaser_created_by', 'purchaser_created_role', 'purchaser_created_at',  # 审计字段只读
+            'purchaser_updated_by', 'purchaser_updated_role', 'purchaser_updated_at'
         )
     
     def get_total_quote(self, obj):
@@ -42,12 +42,12 @@ class ProcurementSupplierSerializer(serializers.ModelSerializer):
         model = ProcurementSupplier
         fields = [
             'id', 'supplier', 'is_selected', 'total_quote',
-            'purchaser_created_by', 'purchaser_created_role',  # 新增审计字段
-            'purchaser_updated_by', 'purchaser_updated_role'   # 新增审计字段
+            'purchaser_created_by', 'purchaser_created_role', 'purchaser_created_at',  # 新增审计字段
+            'purchaser_updated_by', 'purchaser_updated_role', 'purchaser_updated_at'   # 新增审计字段
         ]
         read_only_fields = (
-            'purchaser_created_by', 'purchaser_created_role',  # 审计字段只读
-            'purchaser_updated_by', 'purchaser_updated_role'
+            'purchaser_created_by', 'purchaser_created_role', 'purchaser_created_at',  # 审计字段只读
+            'purchaser_updated_by', 'purchaser_updated_role', 'purchaser_updated_at'
         )
 
 class ProcurementRemarkSerializer(serializers.ModelSerializer):
@@ -113,7 +113,7 @@ class ProcurementPurchasingSerializer(serializers.ModelSerializer):
                 total_selected_quote += total_quote
                 selected_supplier_ids.append(supplier.id)
         
-        # 计算总利润
+        #计算总利润
         budget = obj.get_total_budget()
         total_profit = budget - total_selected_quote if budget > 0 else 0
         
@@ -133,13 +133,17 @@ class ProcurementPurchasingSerializer(serializers.ModelSerializer):
                 # 新增审计字段
                 'purchaser_created_by': supplier.purchaser_created_by,
                 'purchaser_created_role': supplier.purchaser_created_role,
+                'purchaser_created_at': supplier.purchaser_created_at,
                 'purchaser_updated_by': supplier.purchaser_updated_by,
                 'purchaser_updated_role': supplier.purchaser_updated_role,
+                'purchaser_updated_at': supplier.purchaser_updated_at,
                 'supplier_relation_info': {
                     'purchaser_created_by': procurement_supplier.purchaser_created_by,
                     'purchaser_created_role': procurement_supplier.purchaser_created_role,
+                    'purchaser_created_at': procurement_supplier.purchaser_created_at,
                     'purchaser_updated_by': procurement_supplier.purchaser_updated_by,
                     'purchaser_updated_role': procurement_supplier.purchaser_updated_role,
+                    'purchaser_updated_at': procurement_supplier.purchaser_updated_at,
                 },
                 'commodities': [
                     {
@@ -151,6 +155,7 @@ class ProcurementPurchasingSerializer(serializers.ModelSerializer):
                         # 商品审计字段
                         'purchaser_created_by': commodity.purchaser_created_by,
                         'purchaser_created_role': commodity.purchaser_created_role,
+                        'purchaser_created_at': commodity.purchaser_created_at,
                     }
                     for commodity in supplier.commodities.all()
                 ]

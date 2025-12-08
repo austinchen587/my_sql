@@ -15,8 +15,10 @@ class Supplier(models.Model):
     # 新增供应商审计字段
     purchaser_created_by = models.CharField(max_length=100, verbose_name='采购创建人', default='未知用户')
     purchaser_created_role = models.CharField(max_length=20, verbose_name='采购创建人角色', default='unassigned')
+    purchaser_created_at = models.DateTimeField(auto_now_add=True, verbose_name='采购创建时间')
     purchaser_updated_by = models.CharField(max_length=100, verbose_name='采购更新人', null=True, blank=True)
     purchaser_updated_role = models.CharField(max_length=20, verbose_name='采购更新人角色', null=True, blank=True)
+    purchaser_updated_at = models.DateTimeField(auto_now=True, verbose_name='采购更新时间')
     
     class Meta:
         db_table = 'procurement_suppliers'  # 改为复数形式，避免冲突
@@ -38,6 +40,7 @@ class SupplierCommodity(models.Model):
     # 新增供应商商品审计字段
     purchaser_created_by = models.CharField(max_length=100, verbose_name='采购创建人', default='未知用户')
     purchaser_created_role = models.CharField(max_length=20, verbose_name='采购创建人角色', default='unassigned')
+    purchaser_created_at = models.DateTimeField(auto_now_add=True, verbose_name='采购创建时间')
     
     class Meta:
         db_table = 'supplier_commodities'  # 改为复数形式
@@ -220,8 +223,10 @@ class ProcurementSupplier(models.Model):
     # 新增供应商关系审计字段
     purchaser_created_by = models.CharField(max_length=100, verbose_name='采购创建人', default='未知用户')
     purchaser_created_role = models.CharField(max_length=20, verbose_name='采购创建人角色', default='unassigned')
+    purchaser_created_at = models.DateTimeField(auto_now_add=True, verbose_name='采购创建时间')
     purchaser_updated_by = models.CharField(max_length=100, verbose_name='采购更新人', null=True, blank=True)
     purchaser_updated_role = models.CharField(max_length=20, verbose_name='采购更新人角色', null=True, blank=True)
+    purchaser_updated_at = models.DateTimeField(auto_now=True, verbose_name='采购更新时间')
     
     class Meta:
         db_table = 'procurement_supplier_relation'  # 改为不同的表名
