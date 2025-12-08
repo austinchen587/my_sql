@@ -2,6 +2,7 @@
 import logging
 import base64
 import urllib.parse
+from authentication.models import UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ def get_username_from_request(request):
     
     # 4. 如果都没有，尝试从请求头获取并解码
     elif request.META.get('HTTP_X_USERNAME'):
-        encoded_username = request.METAget('HTTP_X_USERNAME')
+        encoded_username = request.META.get('HTTP_X_USERNAME')
         username = decode_username_from_header(encoded_username)
         logger.info(f"从请求头获取并解码用户名: {username}")
     
@@ -56,3 +57,32 @@ def get_username_from_request(request):
         logger.warning("无法获取用户信息，使用'未知用户'")
     
     return username
+
+def get_user_role_from_request(request):
+    """从请求中获取用户角色"""
+    role = "unassigned"
+    
+    try:
+        # 1. 首先尝试从认证用户获取角色
+        if hasattr(request, 'user') and request.user.is_authenticated:
+            try:
+                user_profile = UserProfile.objects.get(user=request.user)
+                role = user_profile.role
+                logger.info(f"从用户档案获取角色: {role}")
+            except UserProfile.DoesNotExist:
+                logger.warning("用户档案不存在，使用默认角色")
+        
+        # 2. 尝试从cookies获取角色
+        elif request.COOKIES.get('user_role'):
+            role = request.COOKIES.get('user_role')
+            logger.info(f"从cookie获取角色: {role}")
+        
+        # 3. 尝试从session获取角色
+        elif request.session.get('user_role'):
+            role = request.session.get('user_role')
+            logger.info(f"从session获取角色: {role}")
+    
+    except Exception as e:
+        logger.warning(f"获取用户角色失败，使用默认角色，错误: {str(e)}")
+    
+    return role

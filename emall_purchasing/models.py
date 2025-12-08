@@ -3,6 +3,7 @@ from django.contrib.postgres.fields import ArrayField
 import re  # 导入正则表达式模块
 from emall.models import ProcurementEmall
 from django.utils import timezone
+from authentication.models import UserProfile  # 导入UserProfile模型
 
 class Supplier(models.Model):
     """供应商模型"""
@@ -10,6 +11,12 @@ class Supplier(models.Model):
     source = models.CharField(max_length=255, null=True, blank=True,verbose_name='获取渠道')
     contact = models.CharField(max_length=255, null=True, blank=True, verbose_name='联系方式')
     store_name = models.CharField(max_length=255, null=True, blank=True, verbose_name='店铺名称')
+    
+    # 新增供应商审计字段
+    purchaser_created_by = models.CharField(max_length=100, verbose_name='采购创建人', default='未知用户')
+    purchaser_created_role = models.CharField(max_length=20, verbose_name='采购创建人角色', default='unassigned')
+    purchaser_updated_by = models.CharField(max_length=100, verbose_name='采购更新人', null=True, blank=True)
+    purchaser_updated_role = models.CharField(max_length=20, verbose_name='采购更新人角色', null=True, blank=True)
     
     class Meta:
         db_table = 'procurement_suppliers'  # 改为复数形式，避免冲突
@@ -22,11 +29,15 @@ class Supplier(models.Model):
 class SupplierCommodity(models.Model):
     """供应商商品信息"""
     supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='commodities')
-    name = models.CharField(max_length=255, verbose_name='商品名称')
+    name = models.CharField(max_length=255, verbose_name='商品名稱')
     specification = models.TextField(null=True, blank=True, verbose_name='商品规格')
     price = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='价格')
     quantity = models.IntegerField(verbose_name='数量')
     product_url = models.URLField(max_length=500, null=True, blank=True, verbose_name='产品链接')
+    
+    # 新增供应商商品审计字段
+    purchaser_created_by = models.CharField(max_length=100, verbose_name='采购创建人', default='未知用户')
+    purchaser_created_role = models.CharField(max_length=20, verbose_name='采购创建人角色', default='unassigned')
     
     class Meta:
         db_table = 'supplier_commodities'  # 改为复数形式
@@ -61,7 +72,7 @@ class ProcurementPurchasing(models.Model):
     )
     is_selected = models.BooleanField(default=False, verbose_name='是否选择采购')
     selected_at = models.DateTimeField(null=True, blank=True, verbose_name='选择时间')
-    unselected_at = models.DateTimeField(null=True, blank=True, verbose_name='取消选择时间')
+    unselected_at = models.DateTimeField(null=True,blank=True, verbose_name='取消选择时间')
     
     # 竞标状态
     bidding_status = models.CharField(
@@ -70,7 +81,6 @@ class ProcurementPurchasing(models.Model):
         default='not_started',
         verbose_name='竞标状态'
     )
-    
     
     # 关联供应商（支持多个供应商）
     suppliers = models.ManyToManyField(Supplier, through='ProcurementSupplier', related_name='procurements')
@@ -207,6 +217,12 @@ class ProcurementSupplier(models.Model):
     supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE)
     is_selected = models.BooleanField(default=False, verbose_name='是否选择该供应商')
     
+    # 新增供应商关系审计字段
+    purchaser_created_by = models.CharField(max_length=100, verbose_name='采购创建人', default='未知用户')
+    purchaser_created_role = models.CharField(max_length=20, verbose_name='采购创建人角色', default='unassigned')
+    purchaser_updated_by = models.CharField(max_length=100, verbose_name='采购更新人', null=True, blank=True)
+    purchaser_updated_role = models.CharField(max_length=20, verbose_name='采购更新人角色', null=True, blank=True)
+    
     class Meta:
         db_table = 'procurement_supplier_relation'  # 改为不同的表名
         unique_together = ('procurement', 'supplier')
@@ -264,50 +280,51 @@ class ClientContact(models.Model):
     
 
 class UnifiedProcurementRemark(models.Model):
-        """统一的采购项目备注系统"""
-        procurement = models.ForeignKey(
-            'emall.ProcurementEmall',
-            on_delete=models.CASCADE,
-            related_name='unified_remarks'
-        )
-        remark_content = models.TextField(verbose_name='备注内容')
-        created_by = models.CharField(max_length=100, verbose_name='创建人')
-        
-        # 可选：关联采购进度（如果存在）
-        purchasing = models.ForeignKey(
-            'ProcurementPurchasing',
-            on_delete=models.SET_NULL,
-            null=True,
-            blank=True,
-            related_name='purchasing_remarks'
-        )
-        
-        remark_type = models.CharField(
-            max_length=20,
-            choices=[
-                ('general', '普通备注'),
-                ('purchasing', '采购进度备注'),
-                ('client', '客户沟通备注')
-            ],
-            default='general',
-            verbose_name='备注类型'
-        )
-        
-        created_at = models.DateTimeField(auto_now_add=True)
-        updated_at = models.DateTimeField(auto_now=True)
-        class Meta:
-            db_table = 'unified_procurement_remarks'
-            verbose_name = '统一采购备注'
-            verbose_name_plural = verbose_name
-            ordering = ['-created_at']
-        
-        def __str__(self):
-            return f"{self.procurement.project_title} - {self.get_remark_type_display()} - {self.created_at.strftime('%Y-%m-%d')}"
-        
-        @classmethod
-        def get_latest_remark(cls, procurement_id):
-            """获取项目的最新备注"""
-            try:
-                return cls.objects.filter(procurement_id=procurement_id).first()
-            except cls.DoesNotExist:
-                return None
+    """统一的采购项目备注系统"""
+    procurement = models.ForeignKey(
+        'emall.ProcurementEmall',
+        on_delete=models.CASCADE,
+        related_name='unified_remarks'
+    )
+    remark_content = models.TextField(verbose_name='备注内容')
+    created_by = models.CharField(max_length=100, verbose_name='创建人')
+    
+    # 可选：关联采购进度（如果存在）
+    purchasing = models.ForeignKey(
+        'ProcurementPurchasing',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='purchasing_remarks'
+    )
+    
+    remark_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('general', '普通备注'),
+            ('purchasing', '采购进度备注'),
+            ('client', '客户沟通备注')
+        ],
+        default='general',
+        verbose_name='备注类型'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'unified_procurement_remarks'
+        verbose_name = '统一采购备注'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.procurement.project_title} - {self.get_remark_type_display()} - {self.created_at.strftime('%Y-%m-%d')}"
+    
+    @classmethod
+    def get_latest_remark(cls, procurement_id):
+        """获取项目的最新备注"""
+        try:
+            return cls.objects.filter(procurement_id=procurement_id).first()
+        except cls.DoesNotExist:
+            return None

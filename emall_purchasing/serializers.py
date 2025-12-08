@@ -6,7 +6,11 @@ from emall.models import ProcurementEmall  # 从emall应用导入
 class SupplierCommoditySerializer(serializers.ModelSerializer):
     class Meta:
         model = SupplierCommodity
-        fields = ['id', 'name', 'specification', 'price', 'quantity', 'product_url']
+        fields = [
+            'id', 'name', 'specification', 'price', 'quantity', 'product_url',
+            'purchaser_created_by', 'purchaser_created_role'  # 新增审计字段
+        ]
+        read_only_fields = ('purchaser_created_by', 'purchaser_created_role')  # 审计字段只读
 
 class SupplierSerializer(serializers.ModelSerializer):
     commodities = SupplierCommoditySerializer(many=True, read_only=True)
@@ -14,7 +18,15 @@ class SupplierSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Supplier
-        fields = ['id', 'name', 'source', 'contact', 'store_name', 'commodities', 'total_quote']
+        fields = [
+            'id', 'name', 'source', 'contact', 'store_name', 'commodities', 'total_quote',
+            'purchaser_created_by', 'purchaser_created_role',  # 新增审计字段
+            'purchaser_updated_by', 'purchaser_updated_role'   # 新增审计字段
+        ]
+        read_only_fields = (
+            'purchaser_created_by', 'purchaser_created_role',  # 审计字段只读
+            'purchaser_updated_by', 'purchaser_updated_role'
+        )
     
     def get_total_quote(self, obj):
         total = 0
@@ -28,7 +40,15 @@ class ProcurementSupplierSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ProcurementSupplier
-        fields = ['id', 'supplier', 'is_selected', 'total_quote']
+        fields = [
+            'id', 'supplier', 'is_selected', 'total_quote',
+            'purchaser_created_by', 'purchaser_created_role',  # 新增审计字段
+            'purchaser_updated_by', 'purchaser_updated_role'   # 新增审计字段
+        ]
+        read_only_fields = (
+            'purchaser_created_by', 'purchaser_created_role',  # 审计字段只读
+            'purchaser_updated_by', 'purchaser_updated_role'
+        )
 
 class ProcurementRemarkSerializer(serializers.ModelSerializer):
     created_at_display = serializers.DateTimeField(source='created_at', format='%Y-%m-%d %H:%M', read_only=True)
@@ -69,13 +89,111 @@ class ProcurementPurchasingSerializer(serializers.ModelSerializer):
         model = ProcurementPurchasing
         fields = [
             'id', 'procurement_id', 'is_selected', 'bidding_status', 'bidding_status_display',
-            'client_contact', 'client_phone', 'procurement_title', 'procurement_number',
-            'total_budget', 'suppliers_info', 'remarks_history', 'created_at', 'updated_at',
-            'project_owner'
+            'procurement_title', 'procurement_number', 'total_budget', 'suppliers_info', 
+            'remarks_history', 'created_at', 'updated_at', 'project_owner'
         ]
     
     def get_total_budget(self, obj):
         return obj.get_total_budget()
     
     def get_suppliers_info(self, obj):
-        return obj.get_suppliers_info()
+        """获取供应商信息，包含审计字段"""
+        suppliers_info = []
+        
+        # 计算所有被选中供应商的总报价
+        total_selected_quote = 0
+        selected_supplier_ids = []
+        
+        # 先计算总报价
+        for procurement_supplier in obj.procurementsupplier_set.all():
+            supplier = procurement_supplier.supplier
+            total_quote = procurement_supplier.get_total_quote()
+            
+            if procurement_supplier.is_selected:
+                total_selected_quote += total_quote
+                selected_supplier_ids.append(supplier.id)
+        
+        # 计算总利润
+        budget = obj.get_total_budget()
+        total_profit = budget - total_selected_quote if budget > 0 else 0
+        
+        # 构建供应商信息
+        for procurement_supplier in obj.procurementsupplier_set.all():
+            supplier = procurement_supplier.supplier
+            supplier_quote = procurement_supplier.get_total_quote()
+            
+            supplier_data = {
+                'id': supplier.id,
+                'name': supplier.name,
+                'source': supplier.source,
+                'contact': supplier.contact,
+                'store_name': supplier.store_name,
+                'total_quote': float(supplier_quote) if supplier_quote else 0,
+                'is_selected': procurement_supplier.is_selected,
+                # 新增审计字段
+                'purchaser_created_by': supplier.purchaser_created_by,
+                'purchaser_created_role': supplier.purchaser_created_role,
+                'purchaser_updated_by': supplier.purchaser_updated_by,
+                'purchaser_updated_role': supplier.purchaser_updated_role,
+                'supplier_relation_info': {
+                    'purchaser_created_by': procurement_supplier.purchaser_created_by,
+                    'purchaser_created_role': procurement_supplier.purchaser_created_role,
+                    'purchaser_updated_by': procurement_supplier.purchaser_updated_by,
+                    'purchaser_updated_role': procurement_supplier.purchaser_updated_role,
+                },
+                'commodities': [
+                    {
+                        'name': commodity.name,
+                        'specification': commodity.specification or '',
+                        'price': float(commodity.price) if commodity.price else 0,
+                        'quantity': commodity.quantity or 0,
+                        'product_url': commodity.product_url or '',
+                        # 商品审计字段
+                        'purchaser_created_by': commodity.purchaser_created_by,
+                        'purchaser_created_role': commodity.purchaser_created_role,
+                    }
+                    for commodity in supplier.commodities.all()
+                ]
+            }
+            
+            # 利润计算：如果是被选中的供应商，显示总利润；否则利润为0
+            if procurement_supplier.is_selected:
+                supplier_data['profit'] = float(total_profit) if total_profit > 0 else 0
+            else:
+                supplier_data['profit'] = 0
+                
+            suppliers_info.append(supplier_data)
+        
+        return suppliers_info
+
+# 新增：供应商创建和更新的序列化器
+class SupplierCreateSerializer(serializers.ModelSerializer):
+    """供应商创建序列化器"""
+    commodities = SupplierCommoditySerializer(many=True, required=False)
+    
+    class Meta:
+        model = Supplier
+        fields = [
+            'name', 'source', 'contact', 'store_name', 'commodities',
+            'purchaser_created_by', 'purchaser_created_role'  # 审计字段
+        ]
+        read_only_fields = ('purchaser_created_by', 'purchaser_created_role')  # 审计字段只读
+
+class SupplierUpdateSerializer(serializers.ModelSerializer):
+    """供应商更新序列化器"""
+    commodities = SupplierCommoditySerializer(many=True, required=False)
+    
+    class Meta:
+        model = Supplier
+        fields = [
+            'name', 'source', 'contact', 'store_name', 'commodities',
+            'purchaser_updated_by', 'purchaser_updated_role'  # 审计字段
+        ]
+        read_only_fields = ('purchaser_updated_by', 'purchaser_updated_role')  # 审计字段只读
+
+class ProcurementSupplierCreateSerializer(serializers.ModelSerializer):
+    """采购供应商关系创建序列化器"""
+    class Meta:
+        model = ProcurementSupplier
+        fields = ['procurement', 'supplier', 'is_selected', 'purchaser_created_by', 'purchaser_created_role']
+        read_only_fields = ('purchaser_created_by', 'purchaser_created_role')  # 审计字段只读
