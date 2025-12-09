@@ -7,7 +7,7 @@ class DailyProfitService:
     
     @staticmethod
     def get_daily_profit_stats():
-        """获取每日利润统计数据"""
+        """获取每日利润统计数据（包含最终报价）"""
         sql = """
         SELECT 
             pe.project_name,
@@ -43,32 +43,20 @@ class DailyProfitService:
                 ),
                 0
             ) as total_quote,
-            -- 利润计算：总预算 - 所有被选中供应商的总报价
-            CASE 
-                WHEN COUNT(CASE WHEN psr.is_selected = true THEN 1 ELSE NULL END) = 0 THEN 0
-                ELSE 
-                    (CASE 
-                        WHEN pe.total_price_control IS NULL OR pe.total_price_control = '-' THEN 0
-                        WHEN pe.total_price_control LIKE '%万元%' AND pe.total_price_control NOT LIKE '%元万元%' THEN 
-                            CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC) * 10000
-                        WHEN pe.total_price_control LIKE '%元万元%' THEN 
-                            CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC)
-                        WHEN pe.total_price_control LIKE '%元%' AND pe.total_price_control NOT LIKE '%万元%' THEN 
-                            CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC)
-                        ELSE 
-                            COALESCE(CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC), 0)
-                    END) - 
-                    COALESCE(
-                        SUM(
-                            CASE WHEN psr.is_selected = true THEN (
-                                SELECT SUM(sc.price * sc.quantity)
-                                FROM supplier_commodities sc
-                                WHERE sc.supplier_id = ps.id
-                            ) ELSE 0 END
-                        ),
-                        0
-                    )
-            END as profit,
+            -- 最终协商报价：获取被选中供应商的最终报价
+            COALESCE(
+                MAX(
+                    CASE WHEN psr.is_selected = true THEN psr.final_negotiated_quote ELSE NULL END
+                ),
+                0
+            ) as final_negotiated_quote,
+            -- 最终报价修改信息（用于调试）
+            MAX(
+                CASE WHEN psr.is_selected = true THEN psr.final_quote_modified_by ELSE NULL END
+            ) as final_quote_modifier,
+            MAX(
+                CASE WHEN psr.is_selected = true THEN psr.final_quote_modified_at ELSE NULL END
+            ) as final_quote_modified_at,
             -- 最新备注
             (
                 SELECT pr.remark_content 

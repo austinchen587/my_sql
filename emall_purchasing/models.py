@@ -221,6 +221,32 @@ class ProcurementSupplier(models.Model):
     supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE)
     is_selected = models.BooleanField(default=False, verbose_name='是否选择该供应商')
     
+    # 新增最终报价字段及专属审计字段
+    final_negotiated_quote = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        verbose_name='最终协商报价'
+    )
+    final_quote_modified_by = models.CharField(
+        max_length=100, 
+        verbose_name='最终报价修改人', 
+        null=True, 
+        blank=True
+    )
+    final_quote_modified_role = models.CharField(
+        max_length=20, 
+        verbose_name='最终报价修改人角色', 
+        null=True, 
+        blank=True
+    )
+    final_quote_modified_at = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        verbose_name='最终报价修改时间'
+    )
+    
     # 新增供应商关系审计字段
     purchaser_created_by = models.CharField(max_length=100, verbose_name='采购创建人', default='未知用户')
     purchaser_created_role = models.CharField(max_length=20, verbose_name='采购创建人角色', default='unassigned')
@@ -234,7 +260,6 @@ class ProcurementSupplier(models.Model):
         unique_together = ('procurement', 'supplier')
         verbose_name = '采购供应商关系'
         verbose_name_plural = '采购供应商关系'
-
     def get_total_quote(self):
         """获取该供应商的总报价"""
         total = 0

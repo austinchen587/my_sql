@@ -1,3 +1,4 @@
+# analysis/serializers/daily_profit_stats.py
 from rest_framework import serializers
 from ..models.daily_profit_stats import DailyProfitStats
 
@@ -12,6 +13,7 @@ class DailyProfitStatsSerializer(serializers.ModelSerializer):
             'total_price_control',
             'supplier_name',
             'total_quote',
+            'final_negotiated_quote',  # 新增字段
             'profit',
             'latest_remark'
         ]
