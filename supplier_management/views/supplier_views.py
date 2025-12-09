@@ -50,11 +50,17 @@ def update_supplier(request):
     try:
         supplier = Supplier.objects.get(id=supplier_id)
         
+        # 获取当前用户信息
+        current_user = request.user.username if request.user.is_authenticated else '系统用户'
+        
         # 只更新前端需要的字段
         allowed_fields = ['name', 'source', 'contact', 'store_name']
         for field in allowed_fields:
             if field in update_data:
                 setattr(supplier, field, update_data[field])
+        
+        # 更新审计信息
+        supplier.purchaser_updated_by = current_user
         
         supplier.save()
         
@@ -111,12 +117,18 @@ def add_supplier(request):
         # 使用 ProcurementPurchasing 直接查询
         purchasing = ProcurementPurchasing.objects.get(procurement_id=project_id, is_selected=True)
         
-        # 创建供应商 - 处理字段别名
+        # 获取当前用户信息
+        current_user = request.user.username if request.user.is_authenticated else '系统用户'
+        
+        # 创建供应商 - 添加审计字段
         supplier = Supplier.objects.create(
             name=supplier_data.get('name', ''),
             source=supplier_data.get('source', ''),
             contact=supplier_data.get('contact', supplier_data.get('contact_info', '')),
-            store_name=supplier_data.get('store_name', '')
+            store_name=supplier_data.get('store_name', ''),
+            # 添加审计字段
+            purchaser_created_by=current_user,
+            purchaser_updated_by=current_user
         )
         
         # 创建商品
@@ -131,14 +143,17 @@ def add_supplier(request):
                 product_url=commodity_data.get('product_url', '')
             )
         
-        # 创建供应商关系
+        # 创建供应商关系 - 也添加审计字段
         ProcurementSupplier.objects.create(
             procurement=purchasing,
             supplier=supplier,
-            is_selected=supplier_data.get('is_selected', False)
+            is_selected=supplier_data.get('is_selected', False),
+            purchaser_created_by=current_user,
+            purchaser_updated_by=current_user
         )
         
         print(f"DEBUG: Successfully added supplier {supplier.id} for project {project_id}")
+        print(f"DEBUG: Created by user: {current_user}")
         
         return create_success_response('供应商添加成功', {'supplier_id': supplier.id})
         

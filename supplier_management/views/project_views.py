@@ -46,9 +46,10 @@ def project_list(request):
     
     return Response(projects)
 
+# supplier_management/views/project_views.py - 更新 get_project_suppliers 函数
 @api_view(['GET'])
 def get_project_suppliers(request):
-    """获取项目供应商"""
+    """获取项目供应商 - 包含审计字段"""
     project_id = request.GET.get('project_id')
     
     print(f"DEBUG: Received project_id = {project_id}")
@@ -76,7 +77,7 @@ def get_project_suppliers(request):
             return create_error_response('获取项目列表失败', 500)
     
     try:
-        # 直接通过 ProcurementPurchasing 查询，因为 project_id 对应的是 procurement.id
+        # 直接通过 ProcurementPurchasing 查询
         print(f"DEBUG: Looking for ProcurementPurchasing with procurement_id={project_id}")
         purchasing = ProcurementPurchasing.objects.get(procurement_id=project_id, is_selected=True)
         print(f"DEBUG: Found purchasing info for project_id: {project_id}")
@@ -94,10 +95,9 @@ def get_project_suppliers(request):
             total_quote = procurement_supplier.get_total_quote()
             
             if procurement_supplier.is_selected:
-                # 确保 total_selected_quote 是 float 类型
                 total_selected_quote += float(total_quote) if total_quote else 0
             
-            # 获取商品信息，添加错误处理
+            # 获取商品信息，包含审计字段
             commodities_data = []
             try:
                 from emall_purchasing.models import SupplierCommodity
@@ -108,7 +108,10 @@ def get_project_suppliers(request):
                         'specification': commodity.specification or '',
                         'price': float(commodity.price) if commodity.price else 0,
                         'quantity': commodity.quantity or 0,
-                        'product_url': commodity.product_url or ''
+                        'product_url': commodity.product_url or '',
+                        # 添加商品审计字段
+                        'purchaser_created_by': commodity.purchaser_created_by,
+                        'purchaser_created_at': commodity.purchaser_created_at.isoformat() if commodity.purchaser_created_at else None
                     })
             except Exception as e:
                 print(f"DEBUG: Error fetching commodities for supplier {supplier.id}: {e}")
@@ -123,17 +126,22 @@ def get_project_suppliers(request):
                 'is_selected': procurement_supplier.is_selected,
                 'total_quote': float(total_quote) if total_quote else 0,
                 'commodities': commodities_data,
+                # 添加供应商审计字段
                 'purchaser_created_by': supplier.purchaser_created_by,
-                'purchaser_created_at': supplier.purchaser_created_at,
+                'purchaser_created_at': supplier.purchaser_created_at.isoformat() if supplier.purchaser_created_at else None,
                 'purchaser_updated_by': supplier.purchaser_updated_by,
-                'purchaser_updated_at': supplier.purchaser_updated_at
+                'purchaser_updated_at': supplier.purchaser_updated_at.isoformat() if supplier.purchaser_updated_at else None,
+                # 添加供应商关系审计字段
+                'procurement_supplier_created_by': procurement_supplier.purchaser_created_by,
+                'procurement_supplier_created_at': procurement_supplier.purchaser_created_at.isoformat() if procurement_supplier.purchaser_created_at else None,
+                'procurement_supplier_updated_by': procurement_supplier.purchaser_updated_by,
+                'procurement_supplier_updated_at': procurement_supplier.purchaser_updated_at.isoformat() if procurement_supplier.purchaser_updated_at else None
             }
             
             suppliers_info.append(supplier_data)
         
-        #计算利润 - 确保类型一致
+        # 计算利润
         budget = purchasing.get_total_budget()
-        # 确保 budget 也是 float 类型
         budget_float = float(budget) if budget else 0
         total_profit = budget_float - total_selected_quote if budget_float > total_selected_quote else 0
         
@@ -149,7 +157,6 @@ def get_project_suppliers(request):
         }
         
         print(f"DEBUG: Returning data for {len(suppliers_info)} suppliers")
-        print(f"DEBUG: Budget: {budget_float}, Selected Quote: {total_selected_quote}, Profit: {total_profit}")
         return Response(response_data)
         
     except ProcurementPurchasing.DoesNotExist:
@@ -158,5 +165,5 @@ def get_project_suppliers(request):
     except Exception as e:
         print(f"DEBUG: Unexpected error: {str(e)}")
         import traceback
-        traceback.print_exc()  # 打印完整的错误堆栈
+        traceback.print_exc()
         return create_error_response(f'服务器内部错误: {str(e)}', 500)
