@@ -7,12 +7,12 @@ class DailyProfitService:
     
     @staticmethod
     def get_daily_profit_stats():
-        """获取每日利润统计数据（包含最终报价）"""
+        """获取每日利润统计数据（包含最终报价和选中时间）- 剔除selected_at为null的数据"""
         sql = """
         SELECT 
             pe.project_name,
             pp.project_owner,
-            -- 金额转换逻辑实现
+            -- 金额转换逻辑保持不变
             CASE 
                 WHEN pe.total_price_control IS NULL OR pe.total_price_control = '-' THEN 0
                 WHEN pe.total_price_control LIKE '%万元%' AND pe.total_price_control NOT LIKE '%元万元%' THEN 
@@ -24,7 +24,7 @@ class DailyProfitService:
                 ELSE 
                     COALESCE(CAST(REGEXP_REPLACE(pe.total_price_control, '[^0-9.]', '', 'g') AS NUMERIC), 0)
             END as total_price_control,
-            -- 供应商名称：显示所有被选中供应商的名称，用逗号分隔
+            -- 供应商名称
             COALESCE(
                 STRING_AGG(
                     CASE WHEN psr.is_selected = true THEN ps.name ELSE NULL END, 
@@ -32,7 +32,7 @@ class DailyProfitService:
                 ),
                 '询价中'
             ) as supplier_name,
-            -- 总报价：计算所有被选中供应商的总报价
+            --总报价
             COALESCE(
                 SUM(
                     CASE WHEN psr.is_selected = true THEN (
@@ -43,20 +43,13 @@ class DailyProfitService:
                 ),
                 0
             ) as total_quote,
-            -- 最终协商报价：获取被选中供应商的最终报价
+            -- 最终协商报价
             COALESCE(
                 MAX(
                     CASE WHEN psr.is_selected = true THEN psr.final_negotiated_quote ELSE NULL END
                 ),
                 0
             ) as final_negotiated_quote,
-            -- 最终报价修改信息（用于调试）
-            MAX(
-                CASE WHEN psr.is_selected = true THEN psr.final_quote_modified_by ELSE NULL END
-            ) as final_quote_modifier,
-            MAX(
-                CASE WHEN psr.is_selected = true THEN psr.final_quote_modified_at ELSE NULL END
-            ) as final_quote_modified_at,
             -- 最新备注
             (
                 SELECT pr.remark_content 
@@ -64,23 +57,25 @@ class DailyProfitService:
                 WHERE pr.purchasing_id = pp.id 
                 ORDER BY pr.created_at DESC 
                 LIMIT 1
-            ) as latest_remark
+            ) as latest_remark,
+            -- 选中时间
+            pp.selected_at as selected_at,
+            -- 是否选中
+            pp.is_selected as is_selected
         FROM procurement_emall pe
-        -- 内连接：只获取采购项目被选中的记录
         INNER JOIN procurement_purchasing pp ON pe.id = pp.procurement_id AND pp.is_selected = true
-        -- 左连接：关联供应商（可能没有供应商）
         LEFT JOIN procurement_supplier_relation psr ON pp.id = psr.procurement_id
         LEFT JOIN procurement_suppliers ps ON psr.supplier_id = ps.id
-        WHERE 
-            -- 修改条件：使用selected_at字段筛选当天的记录
-            pp.selected_at >= CURRENT_DATE 
-            AND pp.selected_at < CURRENT_DATE + INTERVAL '1 day'
+        WHERE pp.selected_at IS NOT NULL  -- 新增：剔除selected_at为null的数据
         GROUP BY 
             pe.project_name, 
             pp.project_owner,
             pe.total_price_control,
-            pp.id
+            pp.id,
+            pp.selected_at,
+            pp.is_selected
         ORDER BY 
+            pp.selected_at DESC,
             pe.project_name;
         """
         

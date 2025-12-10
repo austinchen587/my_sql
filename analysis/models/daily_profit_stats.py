@@ -8,10 +8,11 @@ class DailyProfitStats(models.Model):
     total_price_control = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     supplier_name = models.CharField(max_length=255)
     total_quote = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    final_negotiated_quote = models.DecimalField(max_digits=15, decimal_places=2, default=0)  # 新增字段
+    final_negotiated_quote = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     profit = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     latest_remark = models.TextField(blank=True, null=True)
+    selected_at = models.DateTimeField(null=True, blank=True)  # 新增字段，记录选中时间
+    is_selected = models.BooleanField(default=False)  # 新增字段，是否被选中
     
     class Meta:
-        # 这是一个虚拟模型，不需要数据库表
         managed = False

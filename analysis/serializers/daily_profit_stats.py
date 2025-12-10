@@ -13,7 +13,8 @@ class DailyProfitStatsSerializer(serializers.ModelSerializer):
             'total_price_control',
             'supplier_name',
             'total_quote',
-            'final_negotiated_quote',  # 新增字段
+            'final_negotiated_quote',
             'profit',
-            'latest_remark'
+            'latest_remark',
+            'selected_at'  # 添加这个字段
         ]
