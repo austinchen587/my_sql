@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'emall_react',
     'analysis',
     'supplier_management',
+    'oss',
     
 ]
 
@@ -210,3 +211,15 @@ AI_MODEL = os.getenv('AI_MODEL', 'deepseek-ai/DeepSeek-V3.1-Terminus')
 AI_TEMPERATURE = float(os.getenv('AI_TEMPERATURE', '0.7'))
 AI_MAX_TOKENS = int(os.getenv('AI_MAX_TOKENS', '5000'))
 AI_TOP_P = float(os.getenv('AI_TOP_P', '0.9'))
+
+
+
+
+# 阿里云OSS配置
+ALIYUN_OSS_CONFIG = {
+    'ACCESS_KEY_ID': os.getenv('ALIYUN_ACCESS_KEY_ID'),
+    'ACCESS_KEY_SECRET': os.getenv('ALIYUN_ACCESS_KEY_SECRET'),
+    'BUCKET_NAME': os.getenv('ALIYUN_OSS_BUCKET_NAME'),
+    'ENDPOINT': os.getenv('ALIYUN_OSS_ENDPOINT'),
+    'CDN_DOMAIN': os.getenv('ALIYUN_OSS_CDN_DOMAIN', ''),
+}

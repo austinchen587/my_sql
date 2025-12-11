@@ -32,6 +32,7 @@ urlpatterns = [
     path('api/auth/', include('authentication.urls')),
     path('api/analysis/', include('analysis.urls')),
     path('api/supplier/', include('supplier_management.urls')),
+    path('api/oss/', include('oss.urls')),  # 添加OSS API路由
 ]
 
 
