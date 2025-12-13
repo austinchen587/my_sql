@@ -8,7 +8,8 @@ class HtEmallRecordSerializer(serializers.Serializer):
     """
     status_category = serializers.CharField(allow_null=True, required=False, help_text="状态类别（源自 detail_status）")
     project_id = serializers.CharField(help_text="项目ID（唯一标识）")
-    project_name = serializers.CharField(help_text="项目名称")
+    procurement_emall_id = serializers.CharField(allow_null=True, required=False, help_text="采购平台ID（pe.id）")
+    procurement_project_name = serializers.CharField(allow_null=True, required=False, help_text="采购平台项目名称（pe.project_name）")
     expected_total_price = serializers.CharField(allow_null=True, required=False, help_text="期望总价（元）")
     response_total = serializers.CharField(allow_null=True, required=False, help_text="响应总额（元）")
     bid_start_time = serializers.DateTimeField(allow_null=True, required=False, help_text="竞价开始时间")

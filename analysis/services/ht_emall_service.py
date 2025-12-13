@@ -16,19 +16,22 @@ class HtEmallService:
         """
         sql = """
         SELECT
-          detail_status AS status_category,
-          project_id,
-          project_name,
-          expected_total_price,
-          response_total,
-          bid_start_time,
-          bid_end_time
-        FROM ht_emall
-        WHERE transaction_type = '竞价'
+          ht.detail_status AS status_category,
+          ht.project_id,
+          pe.id AS procurement_emall_id,
+          pe.project_name AS procurement_project_name,
+          ht.expected_total_price,
+          ht.response_total,
+          ht.bid_start_time,
+          ht.bid_end_time
+        FROM ht_emall ht
+        LEFT JOIN procurement_emall pe
+          ON ht.project_id = pe.project_number
+        WHERE ht.transaction_type = '竞价'
         ORDER BY
           status_category ASC NULLS LAST,
-          bid_start_time DESC,
-          project_id;
+          ht.bid_start_time DESC,
+          ht.project_id;
         """
         with connection.cursor() as cursor:
             cursor.execute(sql)
