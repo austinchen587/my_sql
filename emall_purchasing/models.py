@@ -139,6 +139,17 @@ class ProcurementPurchasing(models.Model):
     # 关联供应商（支持多个供应商）
     suppliers = models.ManyToManyField(Supplier, through='ProcurementSupplier', related_name='procurements')
     
+    # 新增结算相关字段
+    winning_date = models.DateField(null=True, blank=True, verbose_name='中标日期')
+    settlement_date = models.DateField(null=True, blank=True, verbose_name='结算日期')
+    settlement_amount = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        verbose_name='结算金额'
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

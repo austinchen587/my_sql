@@ -37,6 +37,10 @@ class ProcurementProgressService:
             'remarks_history': build_remarks_history(purchasing_info),
             'created_at': purchasing_info.created_at.isoformat() if purchasing_info.created_at else None,
             'updated_at': purchasing_info.updated_at.isoformat() if purchasing_info.updated_at else None,
+            # 新增结算相关字段
+            'winning_date': purchasing_info.winning_date.isoformat() if purchasing_info.winning_date else None,
+            'settlement_date': purchasing_info.settlement_date.isoformat() if purchasing_info.settlement_date else None,
+            'settlement_amount': float(purchasing_info.settlement_amount) if purchasing_info.settlement_amount else None,
         }
     
     def update_procurement_info(self, procurement_id, request):
@@ -81,6 +85,19 @@ class ProcurementProgressService:
         if 'bidding_status' in data:
             purchasing_info.bidding_status = data['bidding_status']
             logger.info(f"更新竞标状态: {data['bidding_status']}")
+        
+        # 新增结算相关字段更新
+        if 'winning_date' in data:
+            purchasing_info.winning_date = data['winning_date'] or None
+            logger.info(f"更新中标日期: {data['winning_date']}")
+        
+        if 'settlement_date' in data:
+            purchasing_info.settlement_date = data['settlement_date'] or None
+            logger.info(f"更新结算日期: {data['settlement_date']}")
+        
+        if 'settlement_amount' in data:
+            purchasing_info.settlement_amount = data['settlement_amount'] or None
+            logger.info(f"更新结算金额: {data['settlement_amount']}")
         
         purchasing_info.save()
         logger.info("基础信息更新成功")

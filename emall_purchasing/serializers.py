@@ -84,13 +84,19 @@ class ProcurementPurchasingSerializer(serializers.ModelSerializer):
     bidding_status_display = serializers.CharField(source='get_bidding_status_display', read_only=True)
     remarks_history = ProcurementRemarkSerializer(many=True, read_only=True)
     project_owner = serializers.CharField(read_only=True)
+    # 新增字段
+    winning_date = serializers.DateField(allow_null=True, required=False)
+    settlement_date = serializers.DateField(allow_null=True, required=False)
+    settlement_amount = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True, required=False)
     
     class Meta:
         model = ProcurementPurchasing
         fields = [
             'id', 'procurement_id', 'is_selected', 'bidding_status', 'bidding_status_display',
             'procurement_title', 'procurement_number', 'total_budget', 'suppliers_info', 
-            'remarks_history', 'created_at', 'updated_at', 'project_owner'
+            'remarks_history', 'created_at', 'updated_at', 'project_owner',
+            # 新增字段
+            'winning_date', 'settlement_date', 'settlement_amount'
         ]
     
     def get_total_budget(self, obj):
