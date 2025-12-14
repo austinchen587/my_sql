@@ -1,4 +1,4 @@
-#my_sql/emall_purchasing/models.py
+# my_sql/emall_purchasing/models.py
 from django.db import models
 from django.contrib.postgres.fields import ArrayField
 import re  # 导入正则表达式模块
@@ -38,6 +38,21 @@ class SupplierCommodity(models.Model):
     quantity = models.IntegerField(verbose_name='数量')
     product_url = models.URLField(max_length=500, null=True, blank=True, verbose_name='产品链接')
     
+    # 新增支付和物流字段
+    payment_amount = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        verbose_name='支付金额'
+    )
+    tracking_number = models.CharField(
+        max_length=100, 
+        null=True, 
+        blank=True,
+        verbose_name='物流单号'
+    )
+    
     # 新增供应商商品审计字段
     purchaser_created_by = models.CharField(max_length=100, verbose_name='采购创建人', default='未知用户')
     purchaser_created_role = models.CharField(max_length=20, verbose_name='采购创建人角色', default='unassigned')
@@ -50,6 +65,15 @@ class SupplierCommodity(models.Model):
 
     def __str__(self):
         return f"{self.supplier.name} - {self.name}"
+
+# 假设你的模型类似如下
+BIDDING_STATUS_CHOICES = [
+    ('not_started', '未开始'),
+    ('in_progress', '进行中'),
+    ('successful', '竞标成功'),
+    ('failed', '竞标失败'),
+    ('cancelled', '已取消'),
+]
 
 class ProcurementPurchasing(models.Model):
     # 竞标状态选项
@@ -199,7 +223,9 @@ class ProcurementPurchasing(models.Model):
                         'name': commodity.name,
                         'specification': commodity.specification or '',
                         'price': float(commodity.price) if commodity.price else 0,
-                        'quantity': commodity.quantity or 0
+                        'quantity': commodity.quantity or 0,
+                        'payment_amount': float(commodity.payment_amount) if commodity.payment_amount else 0,
+                        'tracking_number': commodity.tracking_number or ''
                     }
                     for commodity in supplier.commodities.all()
                 ]
@@ -260,6 +286,7 @@ class ProcurementSupplier(models.Model):
         unique_together = ('procurement', 'supplier')
         verbose_name = '采购供应商关系'
         verbose_name_plural = '采购供应商关系'
+    
     def get_total_quote(self):
         """获取该供应商的总报价"""
         total = 0
@@ -289,7 +316,6 @@ class ProcurementRemark(models.Model):
     def __str__(self):
         return f"{self.purchasing.procurement.project_title} - 备注"
 
-
 class ClientContact(models.Model):
     """甲方联系人模型"""
     purchasing = models.ForeignKey(
@@ -308,7 +334,6 @@ class ClientContact(models.Model):
     
     def __str__(self):
         return f"{self.name} - {self.contact_info}"
-    
 
 class UnifiedProcurementRemark(models.Model):
     """统一的采购项目备注系统"""

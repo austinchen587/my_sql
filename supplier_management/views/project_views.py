@@ -41,9 +41,30 @@ def project_list(request):
             'total_price_control': purchasing.procurement.total_price_control,
             'selected_at': purchasing.selected_at,
             'supplier_count': purchasing.procurementsupplier_set.count(),
-            'project_owner': purchasing.project_owner
+            'project_owner': purchasing.project_owner,
+            'bidding_status': purchasing.bidding_status,  # code，如 'not_started'
+            'bidding_status_display': purchasing.get_bidding_status_display(),  # 中文，如 '未开始'
         })
     
+    return Response(projects)
+
+@api_view(['GET'])
+def project_list_success(request):
+    """获取竞标成功的项目列表 - 只返回前端需要的字段"""
+    queryset = ProcurementPurchasing.objects.filter(is_selected=True, bidding_status='successful')
+    projects = []
+    for purchasing in queryset.order_by('-selected_at'):
+        projects.append({
+            'id': purchasing.procurement.id,
+            'project_title': purchasing.procurement.project_title,
+            'project_name': purchasing.procurement.project_name,
+            'total_price_control': purchasing.procurement.total_price_control,
+            'selected_at': purchasing.selected_at,
+            'supplier_count': purchasing.procurementsupplier_set.count(),
+            'project_owner': purchasing.project_owner,
+            'bidding_status': purchasing.bidding_status,
+            'bidding_status_display': purchasing.get_bidding_status_display(),
+        })
     return Response(projects)
 
 # supplier_management/views/project_views.py - 更新 get_project_suppliers 函数
