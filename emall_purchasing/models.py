@@ -29,6 +29,32 @@ class Supplier(models.Model):
     def __str__(self):
         return self.name
 
+class PaymentAuditLog(models.Model):
+    commodity = models.ForeignKey('SupplierCommodity', on_delete=models.CASCADE, related_name='payment_audits')
+    old_value = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    new_value = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    changed_by = models.CharField(max_length=100, verbose_name='操作人')
+    changed_role = models.CharField(max_length=20, verbose_name='操作人角色')
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'payment_audit_log'
+        verbose_name = '支付金额审计'
+        verbose_name_plural = '支付金额审计'
+
+class LogisticsAuditLog(models.Model):
+    commodity = models.ForeignKey('SupplierCommodity', on_delete=models.CASCADE, related_name='logistics_audits')
+    old_value = models.CharField(max_length=100, null=True, blank=True)
+    new_value = models.CharField(max_length=100, null=True, blank=True)
+    changed_by = models.CharField(max_length=100, verbose_name='操作人')
+    changed_role = models.CharField(max_length=20, verbose_name='操作人角色')
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'logistics_audit_log'
+        verbose_name = '物流单号审计'
+        verbose_name_plural = '物流单号审计'
+
 class SupplierCommodity(models.Model):
     """供应商商品信息"""
     supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='commodities')
@@ -67,13 +93,13 @@ class SupplierCommodity(models.Model):
         return f"{self.supplier.name} - {self.name}"
 
 # 假设你的模型类似如下
-BIDDING_STATUS_CHOICES = [
-    ('not_started', '未开始'),
-    ('in_progress', '进行中'),
-    ('successful', '竞标成功'),
-    ('failed', '竞标失败'),
-    ('cancelled', '已取消'),
-]
+# BIDDING_STATUS_CHOICES = [
+#     ('not_started', '未开始'),
+#     ('in_progress', '进行中'),
+#     ('successful', '竞标成功'),
+#     ('failed', '竞标失败'),
+#     ('cancelled', '已取消'),
+# ]
 
 class ProcurementPurchasing(models.Model):
     # 竞标状态选项
@@ -384,3 +410,61 @@ class UnifiedProcurementRemark(models.Model):
             return cls.objects.filter(procurement_id=procurement_id).first()
         except cls.DoesNotExist:
             return None
+
+    def save(self, *args, **kwargs):
+        # 获取操作人和角色（需通过上下文传递，伪代码如下）
+        user = getattr(self, '_current_user', None)
+        role = getattr(self, '_current_role', None)
+        # 获取项目状态和is_selected
+        purchasing = None
+        if hasattr(self, 'supplier') and hasattr(self.supplier, 'procurements'):
+            purchasing = self.supplier.procurements.filter(bidding_status='successful', procurementsupplier__is_selected=True).first()
+        # 仅在项目竞标成功且供应商被选中时允许填写/变更
+        if purchasing:
+            # 检查支付金额变动
+            if self.pk:
+                old = SupplierCommodity.objects.get(pk=self.pk)
+                if old.payment_amount != self.payment_amount:
+                    if user and role:
+                        PaymentAuditLog.objects.create(
+                            commodity=self,
+                            old_value=old.payment_amount,
+                            new_value=self.payment_amount,
+                            changed_by=user,
+                            changed_role=role
+                        )
+                if old.tracking_number != self.tracking_number:
+                    if user and role:
+                        LogisticsAuditLog.objects.create(
+                            commodity=self,
+                            old_value=old.tracking_number,
+                            new_value=self.tracking_number,
+                            changed_by=user,
+                            changed_role=role
+                        )
+            else:
+                # 首次填写，仅允许特定角色
+                if user and role and role in ['supplier_manager', 'admin']:
+                    if self.payment_amount is not None:
+                        PaymentAuditLog.objects.create(
+                            commodity=self,
+                            old_value=None,
+                            new_value=self.payment_amount,
+                            changed_by=user,
+                            changed_role=role
+                        )
+                    if self.tracking_number:
+                        LogisticsAuditLog.objects.create(
+                            commodity=self,
+                            old_value=None,
+                            new_value=self.tracking_number,
+                            changed_by=user,
+                            changed_role=role
+                        )
+                elif (self.payment_amount or self.tracking_number):
+                    raise PermissionError("只有供应商经理或管理员可以首次填写支付和物流字段")
+        else:
+            # 非竞标成功或未选中供应商时，不允许填写
+            if self.payment_amount or self.tracking_number:
+                raise PermissionError("只有竞标成功且被选中的供应商才能填写支付和物流字段")
+        super().save(*args, **kwargs)

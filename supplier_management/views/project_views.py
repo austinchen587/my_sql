@@ -130,6 +130,9 @@ def get_project_suppliers(request):
                         'price': float(commodity.price) if commodity.price else 0,
                         'quantity': commodity.quantity or 0,
                         'product_url': commodity.product_url or '',
+                        # 新增：支付和物流字段
+                        'payment_amount': float(commodity.payment_amount) if commodity.payment_amount is not None else None,
+                        'tracking_number': commodity.tracking_number or '',
                         # 添加商品审计字段
                         'purchaser_created_by': commodity.purchaser_created_by,
                         'purchaser_created_at': commodity.purchaser_created_at.isoformat() if commodity.purchaser_created_at else None
