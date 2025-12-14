@@ -32,7 +32,10 @@ class HtEmallService:
           ht.response_total,
           ht.bid_start_time,
           ht.bid_end_time,
-          pp.project_owner  -- 新增项目归属人字段
+          pp.project_owner,  -- 新增项目归属人字段
+          pp.winning_date,  -- 中标日期
+          pp.settlement_date,  -- 结算日期
+          pp.settlement_amount  -- 结算金额
         FROM ht_emall ht
         LEFT JOIN procurement_emall pe
           ON ht.project_id = pe.project_number

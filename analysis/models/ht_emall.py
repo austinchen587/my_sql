@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
 
 # ============================================================================
 # HT电商平台竞价数据模型
@@ -21,6 +21,9 @@ class HtEmallRecord:
     bid_end_time: Optional[datetime]  # 竞价结束时间
     project_owner: Optional[str] = None  # 新增: 项目归属人
     bidding_status: Optional[str] = None  # 新增: 竞标状态
+    winning_date: Optional[date] = None  # 修改为 date 类型
+    settlement_date: Optional[date] = None  # 修改为 date 类型
+    settlement_amount: Optional[float] = None
 
     @staticmethod
     def from_row(row: dict) -> "HtEmallRecord":
@@ -41,6 +44,8 @@ class HtEmallRecord:
                 return None
             if isinstance(val, datetime):
                 return val
+            if isinstance(val, date):  # 如果是 date 类型，转换为 datetime 类型
+                return datetime.combine(val, datetime.min.time())
             try:
                 # 尝试通用的 ISO 8601 格式
                 return datetime.fromisoformat(str(val))
@@ -57,6 +62,9 @@ class HtEmallRecord:
             bid_end_time=parse_dt(row.get("bid_end_time")),
             project_owner=row.get("project_owner"),  # 新增
             bidding_status=row.get("bidding_status"),  # 新增
+            winning_date=row.get("winning_date"),  # 直接获取 date 类型
+            settlement_date=row.get("settlement_date"),  # 直接获取 date 类型
+            settlement_amount=row.get("settlement_amount"),
         )
 
 @dataclass
@@ -80,6 +88,9 @@ class HtEmallStatusView:
     bid_end_time: Optional[datetime]  # 竞价结束时间
     project_owner: Optional[str] = None  # 新增: 项目归属人
     bidding_status: Optional[str] = None  # 新增: 竞标状态
+    winning_date: Optional[date] = None  # 修改为 date 类型
+    settlement_date: Optional[date] = None  # 修改为 date 类型
+    settlement_amount: Optional[float] = None
 
     @staticmethod
     def from_row(row: dict) -> "HtEmallStatusView":
@@ -98,6 +109,8 @@ class HtEmallStatusView:
                 return None
             if isinstance(val, datetime):
                 return val
+            if isinstance(val, date):  # 如果是 date 类型，转换为 datetime 类型
+                return datetime.combine(val, datetime.min.time())
             try:
                 return datetime.fromisoformat(str(val))
             except Exception:
@@ -113,4 +126,7 @@ class HtEmallStatusView:
             bid_end_time=parse_dt(row.get("bid_end_time")),
             project_owner=row.get("project_owner"),  # 新增
             bidding_status=row.get("bidding_status"),  # 新增
+            winning_date=row.get("winning_date"),  # 直接获取 date 类型
+            settlement_date=row.get("settlement_date"),  # 直接获取 date 类型
+            settlement_amount=row.get("settlement_amount"),
         )
