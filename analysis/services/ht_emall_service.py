@@ -18,15 +18,26 @@ class HtEmallService:
         SELECT
           ht.detail_status AS status_category,
           ht.project_id,
+          CASE 
+            WHEN pp.bidding_status = 'not_started' THEN '未开始'
+            WHEN pp.bidding_status = 'in_progress' THEN '进行中'
+            WHEN pp.bidding_status = 'successful' THEN '竞标成功'
+            WHEN pp.bidding_status = 'failed' THEN '竞标失败'
+            WHEN pp.bidding_status = 'cancelled' THEN '已取消'
+            ELSE pp.bidding_status
+          END AS bidding_status,  -- 直接替换为映射后的中文状态
           pe.id AS procurement_emall_id,
           pe.project_name AS procurement_project_name,
           ht.expected_total_price,
           ht.response_total,
           ht.bid_start_time,
-          ht.bid_end_time
+          ht.bid_end_time,
+          pp.project_owner  -- 新增项目归属人字段
         FROM ht_emall ht
         LEFT JOIN procurement_emall pe
           ON ht.project_id = pe.project_number
+        LEFT JOIN procurement_purchasing pp
+          ON pe.id = pp.procurement_id
         WHERE ht.transaction_type = '竞价'
         ORDER BY
           status_category ASC NULLS LAST,

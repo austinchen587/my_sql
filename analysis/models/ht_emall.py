@@ -19,6 +19,8 @@ class HtEmallRecord:
     response_total: Optional[str]  # 响应总额（元）
     bid_start_time: Optional[datetime]  # 竞价开始时间
     bid_end_time: Optional[datetime]  # 竞价结束时间
+    project_owner: Optional[str] = None  # 新增: 项目归属人
+    bidding_status: Optional[str] = None  # 新增: 竞标状态
 
     @staticmethod
     def from_row(row: dict) -> "HtEmallRecord":
@@ -53,6 +55,8 @@ class HtEmallRecord:
             response_total=row.get("response_total"),
             bid_start_time=parse_dt(row.get("bid_start_time")),
             bid_end_time=parse_dt(row.get("bid_end_time")),
+            project_owner=row.get("project_owner"),  # 新增
+            bidding_status=row.get("bidding_status"),  # 新增
         )
 
 @dataclass
@@ -74,6 +78,8 @@ class HtEmallStatusView:
     response_total: Optional[str]  # 响应总额（元）
     bid_start_time: Optional[datetime]  # 竞价开始时间
     bid_end_time: Optional[datetime]  # 竞价结束时间
+    project_owner: Optional[str] = None  # 新增: 项目归属人
+    bidding_status: Optional[str] = None  # 新增: 竞标状态
 
     @staticmethod
     def from_row(row: dict) -> "HtEmallStatusView":
@@ -105,4 +111,6 @@ class HtEmallStatusView:
             response_total=row.get("response_total"),
             bid_start_time=parse_dt(row.get("bid_start_time")),
             bid_end_time=parse_dt(row.get("bid_end_time")),
+            project_owner=row.get("project_owner"),  # 新增
+            bidding_status=row.get("bidding_status"),  # 新增
         )

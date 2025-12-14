@@ -14,4 +14,6 @@ class HtEmallRecordSerializer(serializers.Serializer):
     response_total = serializers.CharField(allow_null=True, required=False, help_text="响应总额（元）")
     bid_start_time = serializers.DateTimeField(allow_null=True, required=False, help_text="竞价开始时间")
     bid_end_time = serializers.DateTimeField(allow_null=True, required=False, help_text="竞价结束时间")
+    project_owner = serializers.CharField(allow_null=True, required=False, help_text="项目归属人")
+    bidding_status = serializers.CharField(allow_null=True, required=False, help_text="竞标状态")  # 新增
 
