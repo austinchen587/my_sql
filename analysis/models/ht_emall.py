@@ -21,9 +21,9 @@ class HtEmallRecord:
     bid_end_time: Optional[datetime]  # 竞价结束时间
     project_owner: Optional[str] = None  # 新增: 项目归属人
     bidding_status: Optional[str] = None  # 新增: 竞标状态
-    winning_date: Optional[date] = None  # 修改为 date 类型
-    settlement_date: Optional[date] = None  # 修改为 date 类型
-    settlement_amount: Optional[float] = None
+    winning_date: Optional[datetime] = None  # 新增: 中标日期
+    settlement_date: Optional[datetime] = None  # 新增: 结算日期
+    settlement_amount: Optional[float] = None  # 新增: 结算金额
 
     @staticmethod
     def from_row(row: dict) -> "HtEmallRecord":
@@ -62,9 +62,9 @@ class HtEmallRecord:
             bid_end_time=parse_dt(row.get("bid_end_time")),
             project_owner=row.get("project_owner"),  # 新增
             bidding_status=row.get("bidding_status"),  # 新增
-            winning_date=row.get("winning_date"),  # 直接获取 date 类型
-            settlement_date=row.get("settlement_date"),  # 直接获取 date 类型
-            settlement_amount=row.get("settlement_amount"),
+            winning_date=parse_dt(row.get("winning_date")),  # 新增
+            settlement_date=parse_dt(row.get("settlement_date")),  # 新增
+            settlement_amount=row.get("settlement_amount"),  # 新增
         )
 
 @dataclass
@@ -88,9 +88,9 @@ class HtEmallStatusView:
     bid_end_time: Optional[datetime]  # 竞价结束时间
     project_owner: Optional[str] = None  # 新增: 项目归属人
     bidding_status: Optional[str] = None  # 新增: 竞标状态
-    winning_date: Optional[date] = None  # 修改为 date 类型
-    settlement_date: Optional[date] = None  # 修改为 date 类型
-    settlement_amount: Optional[float] = None
+    winning_date: Optional[datetime] = None  # 新增: 中标日期
+    settlement_date: Optional[datetime] = None  # 新增: 结算日期
+    settlement_amount: Optional[float] = None  # 新增: 结算金额
 
     @staticmethod
     def from_row(row: dict) -> "HtEmallStatusView":
@@ -126,7 +126,7 @@ class HtEmallStatusView:
             bid_end_time=parse_dt(row.get("bid_end_time")),
             project_owner=row.get("project_owner"),  # 新增
             bidding_status=row.get("bidding_status"),  # 新增
-            winning_date=row.get("winning_date"),  # 直接获取 date 类型
-            settlement_date=row.get("settlement_date"),  # 直接获取 date 类型
-            settlement_amount=row.get("settlement_amount"),
+            winning_date=parse_dt(row.get("winning_date")),  # 新增
+            settlement_date=parse_dt(row.get("settlement_date")),  # 新增
+            settlement_amount=row.get("settlement_amount"),  # 新增
         )

@@ -421,7 +421,6 @@ class UnifiedProcurementRemark(models.Model):
             return cls.objects.filter(procurement_id=procurement_id).first()
         except cls.DoesNotExist:
             return None
-
     def save(self, *args, **kwargs):
         # 获取操作人和角色（需通过上下文传递，伪代码如下）
         user = getattr(self, '_current_user', None)
@@ -432,50 +431,10 @@ class UnifiedProcurementRemark(models.Model):
             purchasing = self.supplier.procurements.filter(bidding_status='successful', procurementsupplier__is_selected=True).first()
         # 仅在项目竞标成功且供应商被选中时允许填写/变更
         if purchasing:
-            # 检查支付金额变动
-            if self.pk:
-                old = SupplierCommodity.objects.get(pk=self.pk)
-                if old.payment_amount != self.payment_amount:
-                    if user and role:
-                        PaymentAuditLog.objects.create(
-                            commodity=self,
-                            old_value=old.payment_amount,
-                            new_value=self.payment_amount,
-                            changed_by=user,
-                            changed_role=role
-                        )
-                if old.tracking_number != self.tracking_number:
-                    if user and role:
-                        LogisticsAuditLog.objects.create(
-                            commodity=self,
-                            old_value=old.tracking_number,
-                            new_value=self.tracking_number,
-                            changed_by=user,
-                            changed_role=role
-                        )
-            else:
-                # 首次填写，仅允许特定角色
-                if user and role and role in ['supplier_manager', 'admin']:
-                    if self.payment_amount is not None:
-                        PaymentAuditLog.objects.create(
-                            commodity=self,
-                            old_value=None,
-                            new_value=self.payment_amount,
-                            changed_by=user,
-                            changed_role=role
-                        )
-                    if self.tracking_number:
-                        LogisticsAuditLog.objects.create(
-                            commodity=self,
-                            old_value=None,
-                            new_value=self.tracking_number,
-                            changed_by=user,
-                            changed_role=role
-                        )
-                elif (self.payment_amount or self.tracking_number):
-                    raise PermissionError("只有供应商经理或管理员可以首次填写支付和物流字段")
+            # 移除了与 payment_amount 和 tracking_number 相关的审计逻辑
+            pass  # 这里可以保留其他与备注相关的业务逻辑
         else:
-            # 非竞标成功或未选中供应商时，不允许填写
-            if self.payment_amount or self.tracking_number:
-                raise PermissionError("只有竞标成功且被选中的供应商才能填写支付和物流字段")
+            # 移除了与 payment_amount 和 tracking_number 相关的权限检查
+            pass  # 这里可以保留其他与备注相关的业务逻辑
+        
         super().save(*args, **kwargs)
