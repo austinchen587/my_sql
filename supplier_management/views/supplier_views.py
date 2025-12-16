@@ -64,7 +64,7 @@ def update_supplier(request):
         
         supplier.save()
         
-        # 更新商品信息
+        # 更新商品信息 - 修复：添加支付金额和物流单号
         if 'commodities' in update_data:
             for commodity_data in update_data['commodities']:
                 if 'id' in commodity_data:
@@ -76,16 +76,27 @@ def update_supplier(request):
                         commodity.price = commodity_data.get('price', commodity.price)
                         commodity.quantity = commodity_data.get('quantity', commodity.quantity)
                         commodity.product_url = commodity_data.get('product_url', commodity.product_url)
+                        
+                        # 🔥 修复：添加支付金额和物流单号的更新
+                        commodity.payment_amount = commodity_data.get('payment_amount', commodity.payment_amount)
+                        commodity.tracking_number = commodity_data.get('tracking_number', commodity.tracking_number)
+                        
                         commodity.save()
+                        
+                        print(f"DEBUG: Updated commodity {commodity.id} with payment_amount: {commodity.payment_amount}, tracking_number: {commodity.tracking_number}")
+                        
                     except SupplierCommodity.DoesNotExist:
-                        # 创建新商品
+                        # 创建新商品 - 同样需要包含支付金额和物流单号
                         SupplierCommodity.objects.create(
                             supplier=supplier,
                             name=commodity_data.get('name', ''),
                             specification=commodity_data.get('specification', ''),
                             price=commodity_data.get('price', 0),
                             quantity=commodity_data.get('quantity', 1),
-                            product_url=commodity_data.get('product_url', '')
+                            product_url=commodity_data.get('product_url', ''),
+                            # 🔥 修复：添加支付金额和物流单号
+                            payment_amount=commodity_data.get('payment_amount', 0),
+                            tracking_number=commodity_data.get('tracking_number', '')
                         )
         
         return create_success_response('供应商信息已更新')
