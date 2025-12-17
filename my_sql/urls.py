@@ -33,6 +33,7 @@ urlpatterns = [
     path('api/analysis/', include('analysis.urls')),
     path('api/supplier/', include('supplier_management.urls')),
     path('api/oss/', include('oss.urls')),  # 添加OSS API路由
+    path('api/fp_emall/', include('fp_emall.urls')),  # 添加FP Emall API路由
 ]
 
 

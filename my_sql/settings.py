@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'analysis',
     'supplier_management',
     'oss',
+    'fp_emall',
     
 ]
 
@@ -88,6 +89,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://192.168.10.10:3000",
     "http://192.168.10.6:3000",
     "http://192.168.10.8:3000",
+    "http://192.168.1.5:3000",
 
 ]
 
@@ -98,6 +100,7 @@ CSRF_TRUSTED_ORIGINS = [
     "http://192.168.10.10:3000",
     "http://192.168.10.6:3000",
     "http://192.168.10.8:3000",
+    "http://192.168.1.5:3000",
 ]
 # 详细的 CORS 头配置
 CORS_ALLOW_HEADERS = [
