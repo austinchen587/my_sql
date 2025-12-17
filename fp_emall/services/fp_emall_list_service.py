@@ -24,7 +24,7 @@ class FpEmallListService:
                 END IF;
             END IF;
             
-            -- 2. 处理"元万元"情况（直接提取数字，不乘以10000）
+            -- 2. 处理"元萬元"情况（直接提取数字，不乘以10000）
             IF price_text LIKE '%元万元%' THEN
                 number_value := substring(price_text from '(\\d+\\.?\\d*)')::NUMERIC;
                 IF number_value IS NOT NULL THEN
@@ -47,16 +47,32 @@ class FpEmallListService:
         $$ LANGUAGE plpgsql;
         """
         
-        # 查询语句
+        # 查询语句 - 包含ProcurementEmall模型中定义的所有字段
         select_sql = """
         SELECT 
-            fp_project_name,
-            fp_project_number,
-            fp_purchasing_unit,
+            fp_id,
+            created_at,
+            updated_at,
             fp_total_price_control,
-            convert_price_format(fp_total_price_control) AS converted_price,
+            fp_publish_date,
+            fp_purchasing_unit,
+            fp_url,
+            fp_project_title,
+            fp_project_number,
             fp_quote_start_time,
-            fp_quote_end_time
+            fp_quote_end_time,
+            fp_region,
+            fp_project_name,
+            fp_commodity_names,
+ fp_parameter_requirements,
+            fp_purchase_quantities,
+            fp_control_amounts,
+            fp_suggested_brands,
+            fp_business_items,
+            fp_business_requirements,
+            fp_related_links,
+            fp_download_files,
+            convert_price_format(fp_total_price_control) AS converted_price
         FROM procurement_fp_emall
         WHERE fp_total_price_control IS NOT NULL
         ORDER BY converted_price DESC
