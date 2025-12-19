@@ -99,7 +99,7 @@ def update_supplier(request, supplier_id):
         # 更新商品信息 - 先删除再创建
         supplier.commodities.all().delete()
         for commodity_data in data.get('commodities', []):
-            SupplierCommodity.objects.create(
+            commodity = SupplierCommodity.objects.create(
                 supplier=supplier,
                 name=commodity_data['name'],
                 specification=commodity_data.get('specification', ''),
@@ -107,8 +107,21 @@ def update_supplier(request, supplier_id):
                 quantity=commodity_data['quantity'],
                 product_url=commodity_data.get('product_url', ''),
                 purchaser_created_by=current_user,
-                purchaser_created_role=current_role
+                purchaser_created_role=current_role,
+                purchaser_updated_by=current_user,
+                purchaser_updated_role=current_role
             )
+            
+            # 设置支付金额和物流单号（如果提供）
+            if 'payment_amount' in commodity_data:
+                commodity.payment_amount = commodity_data['payment_amount']
+            if 'tracking_number' in commodity_data:
+                commodity.tracking_number = commodity_data['tracking_number']
+            
+            # 设置用户信息用于审计日志
+            commodity._current_user = current_user
+            commodity._current_role = current_role
+            commodity.save()  # 这会触发审计记录
         
         logger.info(f"成功更新供应商信息")
         return Response({'success': True, 'message': '供应商更新成功'})

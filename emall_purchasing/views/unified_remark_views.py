@@ -42,12 +42,16 @@ def add_unified_remark(request, procurement_id):
         # 使用工具函数获取用户名
         username = get_username_from_request(request)
         
+        # 获取用户角色（从cookie或session）
+        user_role = request.COOKIES.get('userrole', '未知角色')  # 添加这行
+        
         # 创建统一备注
         remark = UnifiedProcurementRemark.objects.create(
             procurement=procurement,
             purchasing=purchasing_info,
             remark_content=remark_content,
-            created_by=username,  # 使用工具函数获取的用户名
+            created_by=username,
+            created_role=user_role,  # 现在user_role已经定义
             remark_type=remark_type
         )
         
@@ -58,6 +62,7 @@ def add_unified_remark(request, procurement_id):
                 'id': remark.id,
                 'remark_content': remark.remark_content,
                 'created_by': remark.created_by,
+                'created_role': remark.created_role,  # 添加角色信息
                 'remark_type': remark.remark_type,
                 'remark_type_display': remark.get_remark_type_display(),
                 'created_at': remark.created_at.strftime('%Y-%m-%d %H:%M:%S'),
@@ -69,7 +74,7 @@ def add_unified_remark(request, procurement_id):
         return JsonResponse({
             'success': False,
             'error': '采购项目不存在'
-        }, status=404)
+        },status=404)
     except Exception as e:
         return JsonResponse({
             'success': False,

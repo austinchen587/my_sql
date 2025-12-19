@@ -83,14 +83,48 @@ class SupplierCommodity(models.Model):
     purchaser_created_by = models.CharField(max_length=100, verbose_name='采购创建人', default='未知用户')
     purchaser_created_role = models.CharField(max_length=20, verbose_name='采购创建人角色', default='unassigned')
     purchaser_created_at = models.DateTimeField(auto_now_add=True, verbose_name='采购创建时间')
+    # 需要添加更新审计字段
+    purchaser_updated_by = models.CharField(max_length=100, verbose_name='采购更新人', null=True, blank=True)
+    purchaser_updated_role = models.CharField(max_length=20, verbose_name='采购更新人角色', null=True, blank=True)
+    purchaser_updated_at = models.DateTimeField(auto_now=True, verbose_name='采购更新时间')
     
     class Meta:
         db_table = 'supplier_commodities'  # 改为复数形式
         verbose_name = '供应商商品'
         verbose_name_plural = '供应商商品'
-
     def __str__(self):
         return f"{self.supplier.name} - {self.name}"
+    
+    def save(self, *args, **kwargs):
+        """重写save方法，自动记录支付金额和物流单号的变更"""
+        if self.pk:  # 只对已存在的实例记录变更
+            try:
+                old_instance = SupplierCommodity.objects.get(pk=self.pk)
+                
+                # 检查支付金额是否变更
+                if old_instance.payment_amount != self.payment_amount:
+                    PaymentAuditLog.objects.create(
+                        commodity=self,
+                        old_value=old_instance.payment_amount,
+                        new_value=self.payment_amount,
+                        changed_by=getattr(self, '_current_user', '系统'),
+                        changed_role=getattr(self, '_current_role', '未知角色')
+                    )
+                
+                # 检查物流单号是否变更
+                if old_instance.tracking_number != self.tracking_number:
+                    LogisticsAuditLog.objects.create(
+                        commodity=self,
+                        old_value=old_instance.tracking_number,
+                        new_value=self.tracking_number,
+                        changed_by=getattr(self, '_current_user', '系统'),
+                        changed_role=getattr(self, '_current_role', '未知角色')
+                    )
+                        
+            except SupplierCommodity.DoesNotExist:
+                pass
+        
+        super().save(*args, **kwargs)
 
 # 假设你的模型类似如下
 # BIDDING_STATUS_CHOICES = [
@@ -343,6 +377,11 @@ class ProcurementRemark(models.Model):
     created_by = models.CharField(max_length=100, verbose_name='创建人')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)  # 添加 auto_now=True
+
+    # 需要添加角色字段和更新人字段
+    created_role = models.CharField(max_length=20, verbose_name='创建人角色', default='unassigned')
+    updated_by = models.CharField(max_length=100, verbose_name='更新人', null=True, blank=True)
+    updated_role = models.CharField(max_length=20, verbose_name='更新人角色', null=True, blank=True)
     
     class Meta:
         db_table = 'procurement_purchasing_remarks'
@@ -363,6 +402,13 @@ class ClientContact(models.Model):
     name = models.CharField(max_length=255, verbose_name='联系人姓名')
     contact_info = models.CharField(max_length=255, verbose_name='联系方式')
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    # 需要添加完整的审计字段
+    purchaser_created_by = models.CharField(max_length=100, verbose_name='采购创建人', default='未知用户')
+    purchaser_created_role = models.CharField(max_length=20, verbose_name='采购创建人角色', default='unassigned')
+    purchaser_updated_by = models.CharField(max_length=100, verbose_name='采购更新人', null=True, blank=True)
+    purchaser_updated_role = models.CharField(max_length=20, verbose_name='采购更新人角色', null=True, blank=True)
+    purchaser_updated_at = models.DateTimeField(auto_now=True, verbose_name='采购更新时间')
     
     class Meta:
         db_table = 'procurement_client_contacts'
@@ -404,6 +450,12 @@ class UnifiedProcurementRemark(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # 需要添加角色字段和更新人字段
+    created_role = models.CharField(max_length=20, verbose_name='创建人角色', default='unassigned')
+    updated_by = models.CharField(max_length=100, verbose_name='更新人', null=True, blank=True)
+    updated_role = models.CharField(max_length=20, verbose_name='更新人角色', null=True, blank=True)
+
     
     class Meta:
         db_table = 'unified_procurement_remarks'

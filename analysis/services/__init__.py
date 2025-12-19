@@ -5,8 +5,8 @@ from .daily_profit_service import DailyProfitService
 from .ht_emall_service import HtEmallService
 from .ht_emall_reverse import HtEmallReverseService
 from .project_profit_service import ProjectProfitService
-from .monthly_profit_service import MonthlyProfitSummaryService
+from .monthly_profit_service import MonthlyProfitService
 
 __all__ = ['DashboardService', 'StatusStatsService',
            'StatusStatsOwnerService','DailyProfitService','HtEmallService','HtEmallReverseService',
-           'ProjectProfitService', 'MonthlyProfitSummaryService']
+           'ProjectProfitService', 'MonthlyProfitService']

@@ -117,7 +117,19 @@ def build_suppliers_info(purchasing_info):
             'source': supplier.source,
             'contact': supplier.contact,
             'store_name': supplier.store_name,
-            'commodities': commodities,
+            'commodities': [
+                {
+                    'id': commodity.id,
+                    'name': commodity.name,
+                    'specification': commodity.specification or '',
+                    'price': float(commodity.price) if commodity.price else 0,
+                    'quantity': commodity.quantity or 0,
+                    'product_url': commodity.product_url or '',
+                    'payment_amount': float(commodity.payment_amount) if commodity.payment_amount else None,
+                    'tracking_number': commodity.tracking_number or ''
+                }
+                for commodity in supplier.commodities.all()
+            ],
             'total_quote': float(total_quote),
             'is_selected': supplier_rel.is_selected if supplier_rel else False,
             # 新增完整的审计字段信息

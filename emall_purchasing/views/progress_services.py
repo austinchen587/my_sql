@@ -5,11 +5,96 @@ from django.conf import settings
 from ..models import ProcurementPurchasing, ProcurementSupplier, ProcurementRemark, ClientContact
 from .utils import build_client_contacts, build_suppliers_info, build_remarks_history, safe_json_loads
 from .progress_handlers import ContactHandler, SupplierHandler, RemarkHandler
+from .progress_handlers import get_username_from_request, get_user_role_from_request
 
 logger = logging.getLogger(__name__)
 
 class ProcurementProgressService:
     """采购进度管理服务"""
+
+    def update_procurement_info(self, procurement_id, request):
+        """更新采购进度信息"""
+        # 调试：打印所有可用的用户信息
+        self._log_user_info(request)
+        
+        purchasing_info = ProcurementPurchasing.objects.get(procurement_id=procurement_id)
+        
+        data = safe_json_loads(request)
+        if not data:
+            raise ValueError('无效的JSON数据')
+        
+        logger.info(f"接收到的数据: {data}")
+        
+        # 更新基础信息
+        self._update_basic_info(purchasing_info, data)
+        
+        # 更新联系人信息
+        contact_handler = ContactHandler()
+        contact_handler.update_contacts(purchasing_info, data.get('client_contacts', []), request)
+        
+        # 更新供应商选择状态
+        supplier_handler = SupplierHandler()
+        supplier_handler.update_supplier_selection(purchasing_info,data.get('supplier_selection', []), request)
+        
+        # 更新支付金额和物流单号
+        self._update_payment_and_logistics(purchasing_info, data.get('suppliers_info', []), request)
+        
+        # 添加新备注
+        remark_handler = RemarkHandler()
+        remark_handler.add_new_remark(purchasing_info, data.get('new_remark'), request)
+        
+        current_remarks_count = purchasing_info.remarks_history.count()
+        logger.info(f"当前采购项目的备注总数: {current_remarks_count}")
+        
+        return {
+            'success': True, 
+            'message': '采购信息更新成功',
+            'remarks_count': current_remarks_count
+        }
+    
+    def _update_payment_and_logistics(self, purchasing_info, suppliers_info, request):
+        """更新支付金额和物流单号"""
+        if not isinstance(suppliers_info, list):
+            return
+        
+        # 获取当前用户信息
+        current_user = get_username_from_request(request)
+        current_role = get_user_role_from_request(request)
+        
+        updated_count = 0
+        for supplier_data in suppliers_info:
+            supplier_id = supplier_data.get('id')
+            commodities = supplier_data.get('commodities', [])
+            
+            try:
+                supplier = purchasing_info.suppliers.get(id=supplier_id)
+                for commodity_data in commodities:
+                    commodity_id = commodity_data.get('id')
+                    payment_amount = commodity_data.get('payment_amount')
+                    tracking_number = commodity_data.get('tracking_number')
+                    
+                    if commodity_id and (payment_amount is not None or tracking_number is not None):
+                        commodity = supplier.commodities.get(id=commodity_id)
+                        
+                        # 设置用户信息用于审计
+                        commodity._current_user = current_user
+                        commodity._current_role = current_role
+                        
+                        # 更新字段
+                        if payment_amount is not None:
+                            commodity.payment_amount = payment_amount
+                        if tracking_number is not None:
+                            commodity.tracking_number = tracking_number
+                        
+                        commodity.save()  # 这会触发审计记录
+                        updated_count += 1
+                        
+            except Exception as e:
+                logger.error(f"更新商品支付/物流信息失败，supplier_id: {supplier_id}, 错误: {str(e)}")
+                continue
+        
+        if updated_count > 0:
+            logger.info(f"支付金额和物流单号更新完成，成功更新: {updated_count} 个商品")
     
     def get_procurement_progress(self, procurement_id):
         """获取采购进度信息"""
@@ -61,11 +146,11 @@ class ProcurementProgressService:
         
         # 更新联系人信息
         contact_handler = ContactHandler()
-        contact_handler.update_contacts(purchasing_info, data.get('client_contacts', []))
+        contact_handler.update_contacts(purchasing_info, data.get('client_contacts', []), request)
         
         # 更新供应商选择状态
         supplier_handler = SupplierHandler()
-        supplier_handler.update_supplier_selection(purchasing_info, data.get('supplier_selection', []))
+        supplier_handler.update_supplier_selection(purchasing_info, data.get('supplier_selection', []), request)
         
         # 添加新备注
         remark_handler = RemarkHandler()

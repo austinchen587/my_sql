@@ -2,48 +2,63 @@
 import logging
 import urllib.parse
 from ..models import ClientContact, ProcurementSupplier, ProcurementRemark
-from .username_utils import decode_username_from_header
+from .username_utils import decode_username_from_header, get_username_from_request, get_user_role_from_request
 
 logger = logging.getLogger(__name__)
 
 class ContactHandler:
     """联系人处理器"""
     
-    def update_contacts(self, purchasing_info, contacts_data):
-        """更新联系人信息"""
+    def update_contacts(self, purchasing_info, contacts_data, request):
+        """更新联系人信息 - 添加审计记录"""
         if not isinstance(contacts_data, list):
             logger.warning("联系人数据格式不正确，跳过更新")
             return
         
         logger.info(f"开始更新联系人信息，数量: {len(contacts_data)}")
         
+        # 获取当前用户信息
+        current_user = get_username_from_request(request)
+        current_role = get_user_role_from_request(request)
+        
         # 删除现有联系人
         purchasing_info.client_contacts.all().delete()
         
-        # 添加新联系人
+        # 添加新联系人并记录审计
         contact_count = 0
         for contact_data in contacts_data:
             if contact_data.get('name') or contact_data.get('contact_info'):
                 ClientContact.objects.create(
                     purchasing=purchasing_info,
                     name=contact_data.get('name', ''),
-                    contact_info=contact_data.get('contact_info', '')
+                    contact_info=contact_data.get('contact_info', ''),
+                    # 审计字段
+                    purchaser_created_by=current_user,
+                    purchaser_created_role=current_role,
+                    purchaser_updated_by=current_user,
+                    purchaser_updated_role=current_role
                 )
                 contact_count += 1
                 logger.info(f"添加联系人: {contact_data.get('name')} - {contact_data.get('contact_info')}")
         
         logger.info(f"联系人更新完成，成功添加: {contact_count} 个联系人")
 
+
+
 class SupplierHandler:
     """供应商处理器"""
     
-    def update_supplier_selection(self, purchasing_info, supplier_selection_data):
+    def update_supplier_selection(self, purchasing_info, supplier_selection_data, request):
         """更新供应商选择状态"""
         if not isinstance(supplier_selection_data, list):
             logger.warning("供应商选择数据格式不正确，跳过更新")
             return
         
         logger.info(f"开始更新供应商选择状态，数量: {len(supplier_selection_data)}")
+        
+        # 获取当前用户信息
+        current_user = get_username_from_request(request)
+        current_role = get_user_role_from_request(request)
         
         updated_count = 0
         for supplier_data in supplier_selection_data:
@@ -57,6 +72,8 @@ class SupplierHandler:
                         supplier_id=supplier_id
                     )
                     procurement_supplier.is_selected = bool(is_selected)
+                    procurement_supplier.purchaser_updated_by = current_user
+                    procurement_supplier.purchaser_updated_role = current_role
                     procurement_supplier.save()
                     updated_count += 1
                     logger.info(f"供应商 {supplier_id} 选择状态更新为: {is_selected}")
