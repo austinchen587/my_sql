@@ -12,9 +12,11 @@ class DailyProfitStatsSerializer(serializers.ModelSerializer):
             'project_owner',
             'total_price_control',
             'supplier_name',
+            'supplier_created_by',
+            'supplier_updated_by',
             'total_quote',
             'final_negotiated_quote',
             'profit',
             'latest_remark',
-            'selected_at'  # 添加这个字段
+            'selected_at'
         ]
