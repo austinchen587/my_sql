@@ -25,7 +25,7 @@ class EmallListView(generics.ListAPIView):
     filterset_class = ProcurementEmallFilter
     
     # 搜索字段（全局搜索）
-    search_fields = ['project_title', 'purchasing_unit', 'project_number', 'total_price_control']
+    search_fields = ['project_title', 'purchasing_unit', 'project_number', 'total_price_control', 'region']
     
     # 排序字段
     ordering_fields = ['publish_date', 'quote_end_time']
