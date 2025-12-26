@@ -66,6 +66,17 @@ def update_supplier(request):
         
         # 更新商品信息 - 修复：添加支付金额和物流单号
         if 'commodities' in update_data:
+            # 获取前端传来的商品ID列表
+            new_commodity_ids = [c['id'] for c in update_data['commodities'] if 'id' in c]
+            
+            # 删除不在新列表中的商品
+            existing_commodities = SupplierCommodity.objects.filter(supplier=supplier)
+            commodities_to_delete = existing_commodities.exclude(id__in=new_commodity_ids)
+            
+            print(f"[DEBUG] Commodities to delete: {list(commodities_to_delete.values_list('id', flat=True))}")
+            deleted_count = commodities_to_delete.delete()[0]
+            print(f"[DEBUG] Deleted {deleted_count} commodities")
+            
             for commodity_data in update_data['commodities']:
                 if 'id' in commodity_data:
                     # 更新现有商品
