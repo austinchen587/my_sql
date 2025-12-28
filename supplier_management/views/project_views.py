@@ -44,6 +44,7 @@ def project_list(request):
             'project_owner': purchasing.project_owner,
             'bidding_status': purchasing.bidding_status,  # code，如 'not_started'
             'bidding_status_display': purchasing.get_bidding_status_display(),  # 中文，如 '未开始'
+            'region': purchasing.procurement.region,  # 新增地域字段
         })
     
     return Response(projects)
