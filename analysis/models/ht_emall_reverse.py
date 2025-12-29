@@ -10,7 +10,7 @@ from datetime import datetime
 class HtEmallReverseRecord:
     """
     电商反拍记录数据模型
-    用于映射 ht_emall 表中 transaction_type = '反拍' 的数据结构
+    用于映射 ht_emall 及相关表的反拍数据结构
     """
     status_category: Optional[str]  # 状态类别（源自 detail_status）
     project_id: str  # 项目ID（唯一标识）
@@ -19,14 +19,23 @@ class HtEmallReverseRecord:
     response_total: Optional[str]  # 响应总额（元）
     bid_start_time: Optional[datetime]  # 竞价开始时间
     bid_end_time: Optional[datetime]  # 竞价结束时间
-
+    region: Optional[str]  # 区域信息
+    project_owner: Optional[str]  # 项目归属人
+    winning_date: Optional[datetime]  # 中标日期
+    settlement_date: Optional[datetime]  # 结算日期
+    settlement_amount: Optional[str]  # 结算金额
+    bidding_status: Optional[str]  # 竞标状态
+    
     @staticmethod
     def from_row(row: dict) -> "HtEmallReverseRecord":
         """
         从数据库行记录构造 HtEmallReverseRecord 实例
         参数:
             row: PostgreSQL 查询返回的行字典，包含以下键:
-                 status_category, project_id, project_name, expected_total_price, response_total, bid_start_time, bid_end_time
+                 status_category, project_id, project_name, expected_total_price,
+                 response_total, bid_start_time, bid_end_time, region,
+                 project_owner, winning_date, settlement_date,
+                 settlement_amount, bidding_status
         返回:
             HtEmallReverseRecord 实例
         """
@@ -39,6 +48,16 @@ class HtEmallReverseRecord:
                 return datetime.fromisoformat(str(val))
             except Exception:
                 return None
+        
+        def parse_date(val):
+            if val is None:
+                return None
+            if isinstance(val, datetime):
+                return val.date()
+            try:
+                return datetime.strptime(str(val), "%Y-%m-%d").date()
+            except Exception:
+                return None
 
         return HtEmallReverseRecord(
             status_category=row.get("status_category"),
@@ -48,4 +67,10 @@ class HtEmallReverseRecord:
             response_total=row.get("response_total"),
             bid_start_time=parse_dt(row.get("bid_start_time")),
             bid_end_time=parse_dt(row.get("bid_end_time")),
+            region=row.get("region"),
+            project_owner=row.get("project_owner"),
+            winning_date=parse_date(row.get("winning_date")),
+            settlement_date=parse_date(row.get("settlement_date")),
+            settlement_amount=row.get("settlement_amount"),
+            bidding_status=row.get("bidding_status")
         )
