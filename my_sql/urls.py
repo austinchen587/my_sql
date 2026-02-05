@@ -27,6 +27,12 @@ urlpatterns = [
     path('api/emall/purchasing/', include('emall_purchasing.urls')),
     path('api/', include('emall.urls')),
 
+    # 【新增】竞价大厅专用接口
+    path('api/bidding/', include('bidding.urls')),
+
+
+
+
     #react 测试路径
     path('api/', include('emall_react.urls')),
     path('api/auth/', include('authentication.urls')),

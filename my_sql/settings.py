@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'supplier_management',
     'oss',
     'fp_emall',
+    'bidding',
     
 ]
 
