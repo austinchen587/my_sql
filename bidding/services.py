@@ -2,6 +2,7 @@ import re
 from decimal import Decimal
 from django.utils import timezone
 from dateutil import parser
+from django.db import connection # [新增]
 from bidding.models import BiddingProject
 import logging
 
@@ -15,7 +16,7 @@ def sync_single_project(raw_obj):
         # 1. 提取标题
         title = raw_obj.project_title or raw_obj.project_name or "无标题项目"
         
-        # 2. 提取省份 (严格匹配)
+        # 2. 提取省份
         region_str = str(raw_obj.region)
         province = None
         if '江西' in region_str: province = 'JX'
@@ -23,21 +24,36 @@ def sync_single_project(raw_obj):
         elif '安徽' in region_str: province = 'AH'
         elif '浙江' in region_str: province = 'ZJ'
         
-        # 如果不是这4个省，直接忽略，不入库
-        if not province:
-            return None
+        if not province: return None
 
         # 3. 提取模式
         mode = 'reverse' if '反拍' in title else 'bidding'
 
-        # 4. 清洗价格 (复用之前的严格逻辑)
+        # 4. 清洗价格
         price = parse_price(raw_obj.total_price_control)
 
         # 5. 清洗时间
         start = parse_time(raw_obj.quote_start_time)
         end = parse_time(raw_obj.quote_end_time)
 
-        # 6. 简单的分类规则
+        # 6. [核心修改] 查库获取 root_category
+        root_cat = 'goods' # 默认值
+        try:
+            with connection.cursor() as cursor:
+                # 根据 record_id (即 raw_obj.id) 查找分类
+                cursor.execute(
+                    "SELECT category FROM procurement_emall_category WHERE record_id = %s LIMIT 1", 
+                    [raw_obj.id]
+                )
+                row = cursor.fetchone()
+                if row:
+                    db_cat = row[0]
+                    if db_cat in ['goods', 'project', 'service']:
+                        root_cat = db_cat
+        except Exception as db_e:
+            logger.warning(f"单个同步时查询分类失败: {db_e}")
+
+        # 7. 简单的子分类规则 (Sub Category)
         sub_cat = 'service_other'
         title_search = title 
         if any(k in title_search for k in ['办公', '纸', '墨']): sub_cat = 'office'
@@ -47,13 +63,13 @@ def sync_single_project(raw_obj):
         elif any(k in title_search for k in ['工', '机', '泵']): sub_cat = 'industrial'
         elif any(k in title_search for k in ['食', '水', '油', '米']): sub_cat = 'food'
 
-        # 7. 保存到数据库
+        # 8. 保存到数据库
         obj, created = BiddingProject.objects.update_or_create(
             source_emall=raw_obj,
             defaults={
                 'title': title,
                 'province': province,
-                'root_category': 'goods',
+                'root_category': root_cat, # <--- 使用查到的分类
                 'sub_category': sub_cat,
                 'mode': mode,
                 'control_price': price,
@@ -68,7 +84,7 @@ def sync_single_project(raw_obj):
         logger.error(f"同步失败 ID {raw_obj.id}: {str(e)}")
         return None
 
-# --- 辅助工具函数 ---
+# --- 辅助工具函数保持不变 ---
 def parse_price(price_str):
     if not price_str: return None
     try:
