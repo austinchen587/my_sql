@@ -26,6 +26,20 @@ class BiddingHallSerializer(serializers.ModelSerializer):
     requirements = serializers.SerializerMethodField()
     recommendations = serializers.SerializerMethodField()
 
+    # [新增] 获取采购信息的辅助方法
+    def get_purchasing_info(self, obj):
+        try:
+            return obj.source_emall.purchasing_info
+        except Exception:
+            return None
+
+    # [新增] 增加 raw status 字段
+    bidding_status = serializers.SerializerMethodField()
+
+    def get_bidding_status(self, obj):
+        info = self.get_purchasing_info(obj)
+        return info.bidding_status if info else 'not_started'
+
     class Meta:
         model = BiddingProject
         fields = [
@@ -33,7 +47,7 @@ class BiddingHallSerializer(serializers.ModelSerializer):
             'price_display', 'start_time', 'end_time', 'status', 'status_text',
             'countdown', 'requirements', 'recommendations',
             # [新增] 注册新字段
-            'is_selected', 'project_owner', 'bidding_status_display'
+            'is_selected', 'project_owner', 'bidding_status_display','bidding_status'
         ]
 
     # --- [新增] 辅助方法：获取关联的采购信息 ---

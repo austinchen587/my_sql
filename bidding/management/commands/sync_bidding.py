@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from dateutil import parser
-from django.db import connection  # [新增] 用于执行原生 SQL
+from django.db import connection
 from emall.models import ProcurementEmall
 from bidding.models import BiddingProject
 import logging
@@ -11,22 +11,22 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
-    help = '将 emall 的原始数据清洗并同步到 bidding 表 (已接入 category 分类表)'
+    help = '将 emall 的原始数据清洗并同步到 bidding 表 (已接入 category 分类表 + 智能关键词兜底)'
 
     def handle(self, *args, **options):
-        # 1. [核心新增] 先把分类表的数据一次性读到内存字典里，避免 N+1 查询问题
+        # 1. 预加载分类数据
         self.stdout.write("正在预加载分类数据 (procurement_emall_category)...")
         category_map = {}
         try:
             with connection.cursor() as cursor:
-                # 假设表名是 procurement_emall_category，字段是 record_id 和 category
+                # 注意：这里假设分类表的 record_id 对应 ProcurementEmall 的 id
                 cursor.execute("SELECT record_id, category FROM procurement_emall_category")
                 rows = cursor.fetchall()
                 for r_id, cat in rows:
                     category_map[r_id] = cat
             self.stdout.write(f"分类数据加载完成，共 {len(category_map)} 条")
         except Exception as e:
-            self.stdout.write(self.style.WARNING(f"分类表读取失败 (可能是表名不对?): {e}，将默认使用 goods"))
+            self.stdout.write(self.style.WARNING(f"分类表读取失败 (可能是表名不对?): {e}，后续将完全依赖关键词分类"))
 
         # 2. 开始同步主逻辑
         raw_qs = ProcurementEmall.objects.all()
@@ -55,31 +55,41 @@ class Command(BaseCommand):
                 start = self.parse_time(raw.quote_start_time)
                 end = self.parse_time(raw.quote_end_time)
 
-                # --- [核心修改] 确定 root_category (大类) ---
-                # 优先从分类字典里查，查不到就默认为 'goods'
-                # 数据库里的值: goods, project, service
-                # BiddingProject 定义的值: goods, project, service (完全对应)
+                # =========================================================
+                # [核心修复] 确定 root_category (大类)
+                # 逻辑：先查表 -> 表里没有就查标题关键词 -> 都没有才默认为 goods
+                # =========================================================
                 db_cat = category_map.get(raw.id)
-                root_cat = db_cat if db_cat in ['goods', 'project', 'service'] else 'goods'
+                
+                if db_cat in ['goods', 'project', 'service']:
+                    root_cat = db_cat
+                else:
+                    # 兜底逻辑：根据标题关键词进行补救
+                    if any(k in title for k in ['工程', '施工', '改造', '修缮', '建设', '安装', '装修', '整治']):
+                        root_cat = 'project'
+                    elif any(k in title for k in ['服务', '维保', '检测', '租赁', '运维', '保养', '外包', '物业']):
+                        root_cat = 'service'
+                    else:
+                        root_cat = 'goods' # 实在无法识别，归为物资
 
                 # --- 确定 sub_category (子类) ---
-                # 这里的逻辑可以保留，作为对 goods 的细分
+                # 基于标题的简单规则，用于细分标签
                 sub_cat = 'service_other'
                 title_search = title 
                 if any(k in title_search for k in ['办公', '纸', '墨']): sub_cat = 'office'
                 elif any(k in title_search for k in ['清洁', '洗', '扫']): sub_cat = 'cleaning'
-                elif any(k in title_search for k in ['电脑', '数码', '屏']): sub_cat = 'digital'
+                elif any(k in title_search for k in ['电脑', '数码', '屏', '显']): sub_cat = 'digital'
                 elif any(k in title_search for k in ['球', '服', '体育']): sub_cat = 'sports'
-                elif any(k in title_search for k in ['工', '机', '泵']): sub_cat = 'industrial'
+                elif any(k in title_search for k in ['工', '机', '泵', '阀', '梯', '设施']): sub_cat = 'industrial'
                 elif any(k in title_search for k in ['食', '水', '油', '米']): sub_cat = 'food'
 
-                # --- 保存 ---
+                # --- 保存到 BiddingProject 表 ---
                 BiddingProject.objects.update_or_create(
                     source_emall=raw,
                     defaults={
                         'title': title,
                         'province': province,
-                        'root_category': root_cat,  # <--- 使用查出来的分类
+                        'root_category': root_cat,  # <--- 使用修复后的分类
                         'sub_category': sub_cat,
                         'mode': mode,
                         'control_price': price,
@@ -94,6 +104,7 @@ class Command(BaseCommand):
 
             except Exception as e:
                 error_count += 1
+                # 只打印前5个错误，避免刷屏
                 if error_count <= 5:
                     self.stdout.write(self.style.ERROR(f'ID {raw.id} 同步失败: {e}'))
                 continue
