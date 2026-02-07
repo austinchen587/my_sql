@@ -113,29 +113,64 @@ class BiddingHallSerializer(serializers.ModelSerializer):
         final_list = []
         try:
             pid = str(obj.pk)
-            # 1. 获取基础需求 (Brand表)
+            
+            # 1. 获取两张表的数据
             brands = ProcurementCommodityBrand.objects.filter(procurement_id=pid)
-            # 2. 获取AI分析结果 (Result表)
             results = ProcurementCommodityResult.objects.filter(procurement_id=pid)
             
-            result_map = {r.brand_id: r for r in results}
+            # 2. 建立索引映射
+            # 映射 A: ID -> Result (优先使用)
+            id_map = {r.brand_id: r for r in results if r.brand_id is not None}
+            # 映射 B: 名称 -> Result (兜底备用)
+            name_map = {r.item_name: r for r in results if r.item_name}
+            
+            # 记录已使用的 result_id，防止重复展示
+            used_result_ids = set()
 
+            # --- 阶段一：遍历需求清单 (Brand) ---
             if brands.exists():
                 for b in brands:
-                    res = result_map.get(b.id)
+                    # [双重匹配策略]
+                    # 第一步：尝试 ID 严格匹配 (基于你的数据库验证)
+                    res = id_map.get(b.id)
+                    
+                    # 第二步：如果 ID 没匹配上，尝试名称匹配 (容错兜底)
+                    if not res and b.item_name:
+                        res = name_map.get(b.item_name)
+                    
+                    # 初始化基础信息
                     item_name = b.item_name
                     spec = b.specifications
                     brand_name = b.suggested_brand 
                     candidates = []
-                    reason = "AI 尚未分析此条目"
+                    reason = "AI 正在分析中..." # 默认文案优化
                     
                     if res:
+                        # 标记此 Result 已被成功匹配
+                        used_result_ids.add(res.id)
+                        
+                        # 融合数据：优先用 Result 的数据覆盖
                         item_name = res.item_name or item_name
                         spec = res.specifications or spec
                         reason = res.selection_reason
+                        
+                        # [核心修复] JSON 数据清洗
                         if res.selected_suppliers:
-                            try: candidates = json.loads(res.selected_suppliers)
-                            except: pass
+                            raw_str = res.selected_suppliers
+                            try:
+                                # 尝试直接解析
+                                candidates = json.loads(raw_str)
+                            except:
+                                try:
+                                    # 针对 CSV 格式双引号进行清洗: "" -> "
+                                    clean_str = raw_str.replace('""', '"')
+                                    # 去除首尾多余的引号 (如果是字符串包裹)
+                                    if clean_str.startswith('"') and clean_str.endswith('"'):
+                                        clean_str = clean_str[1:-1]
+                                    candidates = json.loads(clean_str)
+                                except Exception as e:
+                                    logger.error(f"JSON清洗失败 (ID:{res.id}): {e}")
+                                    candidates = []
                     
                     final_list.append({
                         "item_name": item_name, 
@@ -143,29 +178,40 @@ class BiddingHallSerializer(serializers.ModelSerializer):
                         "brand": brand_name, 
                         "reason": reason, 
                         "candidates": candidates,
-                        
-                        # [修复] 补全所有关键字段，特别是 notes
+                        # 补全 Brand 字段
                         "quantity": getattr(b, 'quantity', None),
                         "unit": getattr(b, 'unit', None),
                         "key_word": getattr(b, 'key_word', None),
                         "search_platform": getattr(b, 'search_platform', None),
-                        "notes": getattr(b, 'notes', None)  # <--- 对应数据库的 notes 字段
+                        "notes": getattr(b, 'notes', None)
                     })
-            elif results.exists():
-                # 容错逻辑：如果没有 Brand 数据
-                for res in results:
+
+            # --- 阶段二：处理“孤儿”结果 (Result) ---
+            # 只有那些完全没有匹配上 Brand 的 Result 才会在这里显示
+            for res in results:
+                if res.id not in used_result_ids:
                     candidates = []
                     if res.selected_suppliers:
-                        try: candidates = json.loads(res.selected_suppliers)
-                        except: pass
+                        try:
+                            # 同样的清洗逻辑
+                            clean_str = res.selected_suppliers.replace('""', '"')
+                            if clean_str.startswith('"') and clean_str.endswith('"'):
+                                clean_str = clean_str[1:-1]
+                            candidates = json.loads(clean_str)
+                        except:
+                            candidates = []
+                    
                     final_list.append({
                         "item_name": res.item_name, 
                         "specifications": res.specifications, 
+                        "brand": "未知(原始清单丢失)", 
                         "reason": res.selection_reason, 
                         "candidates": candidates,
-                        "quantity": None, "unit": None, "key_word": None, "search_platform": None, "notes": None
+                        "quantity": "-", "unit": "-", "key_word": "-", "search_platform": "-", "notes": "关联ID断裂"
                     })
+
         except Exception as e:
             logger.warning(f"获取推荐详情失败: {str(e)}")
-            pass
+            return []
+            
         return final_list

@@ -1,13 +1,20 @@
+# bidding/urls.py
+
 from django.urls import path
-from .views import BiddingProjectListView, BiddingProjectDetailView, ProvinceStatsView
+from .views import (
+    BiddingProjectListView, 
+    BiddingProjectDetailView, 
+    ProvinceStatsView,
+    BiddingStatsView  # [新增] 引入新的 View
+)
 
 urlpatterns = [
-    # 门户统计
     path('stats/provinces/', ProvinceStatsView.as_view(), name='province-stats'),
     
-    # 列表筛选
+    # [新增] 注册统计接口
+    # 注意：这条路由必须放在 'project/<int:id>/' 之前，否则 'stats' 会被当成 id 解析
+    path('project/stats/', BiddingStatsView.as_view(), name='project-stats'),
+
     path('list/', BiddingProjectListView.as_view(), name='project-list'),
-    
-    # 详情展示 (修改这里：把 pk 改为 id)
     path('project/<int:id>/', BiddingProjectDetailView.as_view(), name='project-detail'),
 ]
