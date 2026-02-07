@@ -58,9 +58,15 @@ class ProcurementCommodityBrand(models.Model):
     quantity = models.CharField(max_length=100, verbose_name="数量", null=True)
     unit = models.CharField(max_length=50, verbose_name="单位", null=True)
     
+    # 🔥🔥🔥 [必须补上以下字段] 🔥🔥🔥
+    # 只有加上这些，Django 才能从数据库读到数据
+    key_word = models.CharField(max_length=255, verbose_name="搜索关键词", null=True, blank=True)
+    search_platform = models.CharField(max_length=50, verbose_name="搜索平台", null=True, blank=True)
+    notes = models.TextField(verbose_name="备注", null=True, blank=True)
+
     class Meta:
         db_table = 'procurement_commodity_brand'
-        managed = False 
+        managed = False
 
 # === [修改 2] 结果表 ===
 class ProcurementCommodityResult(models.Model):
