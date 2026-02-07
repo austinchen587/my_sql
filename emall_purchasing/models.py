@@ -62,7 +62,7 @@ class SupplierCommodity(models.Model):
     specification = models.TextField(null=True, blank=True, verbose_name='商品规格')
     price = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='价格')
     quantity = models.IntegerField(verbose_name='数量')
-    product_url = models.URLField(max_length=500, null=True, blank=True, verbose_name='产品链接')
+    product_url = models.TextField(null=True, blank=True, verbose_name='产品链接')
     
     # 新增支付和物流字段
     payment_amount = models.DecimalField(

@@ -1,23 +1,25 @@
 # supplier_management/views.py
-"""
-主视图文件 - 保持向后兼容性
-所有视图函数已拆分到 views/ 目录下
-"""
 
-# 从拆分后的模块导入所有视图函数
-from .views import (
+# 1. 从 project_views 导入项目相关视图
+from .views.project_views import (
     project_list,
-    get_project_suppliers,
+    project_list_success,
+    get_project_suppliers
+)
+
+# 2. 从 supplier_views 导入供应商操作视图
+from .views.supplier_views import (
     toggle_supplier_selection,
     update_supplier,
     add_supplier,
     delete_supplier
 )
 
-# 导出所有函数，确保外部引用不受影响
+# 3. 导出所有函数
 __all__ = [
     'project_list',
- '__get_project_suppliers',
+    'project_list_success',
+    'get_project_suppliers', # [修复] 修正了之前的 typo (去掉了前面的下划线)
     'toggle_supplier_selection',
     'update_supplier',
     'add_supplier',
