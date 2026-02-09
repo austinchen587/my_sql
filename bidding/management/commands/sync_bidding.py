@@ -11,91 +11,106 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
-    help = '将 emall 的原始数据清洗并同步到 bidding 表 (已接入 category 分类表 + 智能关键词兜底)'
+    help = '将 emall 的原始数据清洗并同步到 bidding 表 (支持增量更新)'
 
-    # [新增] 添加命令行参数接收
     def add_arguments(self, parser):
         parser.add_argument(
             '--province',
             type=str,
-            help='指定同步的省份代码 (JX, HN, AH, ZJ)',
+            help='指定同步的省份代码 (JX, HN, AH, ZJ, XJ)',
+        )
+        # [新增] 强制全量更新参数
+        parser.add_argument(
+            '--force',
+            action='store_true',
+            help='强制全量更新所有数据',
         )
 
     def handle(self, *args, **options):
-        # [新增] 获取参数
         target_province = options.get('province')
+        force_update = options.get('force') # 获取是否强制更新
 
         # 1. 预加载分类数据
-        self.stdout.write("正在预加载分类数据 (procurement_emall_category)...")
+        self.stdout.write("正在预加载分类数据...")
         category_map = {}
         try:
             with connection.cursor() as cursor:
-                # 注意：这里假设分类表的 record_id 对应 ProcurementEmall 的 id
                 cursor.execute("SELECT record_id, category FROM procurement_emall_category")
                 rows = cursor.fetchall()
                 for r_id, cat in rows:
                     category_map[r_id] = cat
-            self.stdout.write(f"分类数据加载完成，共 {len(category_map)} 条")
-        except Exception as e:
-            self.stdout.write(self.style.WARNING(f"分类表读取失败 (可能是表名不对?): {e}，后续将完全依赖关键词分类"))
+        except Exception:
+            pass
 
-        # 2. 开始同步主逻辑
+        # 2. 查询原始数据
         raw_qs = ProcurementEmall.objects.all()
 
-        # [新增] 如果指定了省份，进行过滤
         if target_province:
-            prov_map = {'JX': '江西', 'HN': '湖南', 'AH': '安徽', 'ZJ': '浙江'}
+            prov_map = {'JX': '江西', 'HN': '湖南', 'AH': '安徽', 'ZJ': '浙江', 'XJ': '新疆'}
             region_keyword = prov_map.get(target_province)
             if region_keyword:
                 self.stdout.write(f"正在执行增量同步，目标区域：{region_keyword}...")
                 raw_qs = raw_qs.filter(region__contains=region_keyword)
-            else:
-                self.stdout.write(self.style.WARNING(f"未知的省份代码: {target_province}，将执行全量同步"))
 
         total = raw_qs.count()
-        self.stdout.write(f"正在同步 {total} 条原始数据...")
+        self.stdout.write(f"扫描到 {total} 条原始数据，开始增量同步...")
 
         success_count = 0
+        skip_count = 0
         error_count = 0
         
+        # 批量预加载已存在的 BiddingProject，减少数据库查询
+        #以此 id 为 key，存储 (updated_at, status) 等关键信息用于比对
+        existing_projects = {}
+        if not force_update:
+            # 只查询必要的字段
+            existing_projects = {
+                p.source_emall_id: p 
+                for p in BiddingProject.objects.only('source_emall', 'status', 'control_price', 'end_time')
+            }
+
         for raw in raw_qs:
             try:
-                # --- 提取标题 ---
-                title = raw.project_title or raw.project_name or "无标题项目"
-                
-                # --- 提取省份 ---
+                # --- 提取与清洗 (保持原有逻辑) ---
                 province = self.parse_province(raw.region)
                 if not province: continue
 
-                # --- 提取模式 ---
+                title = raw.project_title or raw.project_name or "无标题项目"
                 mode = 'reverse' if '反拍' in title else 'bidding'
-
-                # --- 价格清洗 ---
                 price = self.convert_price_to_number(raw.total_price_control)
-
-                # --- 清洗时间 ---
                 start = self.parse_time(raw.quote_start_time)
                 end = self.parse_time(raw.quote_end_time)
+                new_status = self.calc_status(start, end)
 
-                # =========================================================
-                # [核心修复] 确定 root_category (大类)
-                # 逻辑：先查表 -> 表里没有就查标题关键词 -> 都没有才默认为 goods
-                # =========================================================
+                # --- 增量比对逻辑 ---
+                if not force_update and raw.id in existing_projects:
+                    existing = existing_projects[raw.id]
+                    
+                    # 检查关键字段是否有变化
+                    # 1. 状态是否变化 (例如时间流逝导致状态变更)
+                    status_changed = existing.status != new_status
+                    # 2. 价格是否变化
+                    price_changed = existing.control_price != price
+                    # 3. 结束时间是否变化
+                    end_time_changed = existing.end_time != end
+                    
+                    # 如果没有任何关键变化，则跳过
+                    if not (status_changed or price_changed or end_time_changed):
+                        skip_count += 1
+                        continue
+
+                # --- 确定分类 (保持原有逻辑) ---
                 db_cat = category_map.get(raw.id)
-                
                 if db_cat in ['goods', 'project', 'service']:
                     root_cat = db_cat
                 else:
-                    # 兜底逻辑：根据标题关键词进行补救
                     if any(k in title for k in ['工程', '施工', '改造', '修缮', '建设', '安装', '装修', '整治']):
                         root_cat = 'project'
                     elif any(k in title for k in ['服务', '维保', '检测', '租赁', '运维', '保养', '外包', '物业']):
                         root_cat = 'service'
                     else:
-                        root_cat = 'goods' # 实在无法识别，归为物资
+                        root_cat = 'goods'
 
-                # --- 确定 sub_category (子类) ---
-                # 基于标题的简单规则，用于细分标签
                 sub_cat = 'service_other'
                 title_search = title 
                 if any(k in title_search for k in ['办公', '纸', '墨']): sub_cat = 'office'
@@ -105,7 +120,7 @@ class Command(BaseCommand):
                 elif any(k in title_search for k in ['工', '机', '泵', '阀', '梯', '设施']): sub_cat = 'industrial'
                 elif any(k in title_search for k in ['食', '水', '油', '米']): sub_cat = 'food'
 
-                # --- 保存到 BiddingProject 表 ---
+                # --- 执行更新或插入 ---
                 BiddingProject.objects.update_or_create(
                     source_emall=raw,
                     defaults={
@@ -117,22 +132,22 @@ class Command(BaseCommand):
                         'control_price': price,
                         'start_time': start,
                         'end_time': end,
-                        'status': self.calc_status(start, end)
+                        'status': new_status
                     }
                 )
                 success_count += 1
-                if success_count % 100 == 0:
-                    self.stdout.write(f"已处理 {success_count}...")
+                if success_count % 50 == 0: # 降低打印频率
+                    self.stdout.write(f"已更新 {success_count} 条...")
 
             except Exception as e:
                 error_count += 1
-                # 只打印前5个错误，避免刷屏
                 if error_count <= 5:
                     self.stdout.write(self.style.ERROR(f'ID {raw.id} 同步失败: {e}'))
                 continue
 
-        self.stdout.write(self.style.SUCCESS(f'同步完成！成功: {success_count}, 失败: {error_count}'))
+        self.stdout.write(self.style.SUCCESS(f'同步完成！更新: {success_count}, 跳过: {skip_count}, 失败: {error_count}'))
 
+    # ... (保持原有的辅助函数 parse_province, convert_price_to_number, parse_time, calc_status 不变) ...
     def parse_province(self, region_str):
         if not region_str: return None
         r = str(region_str)
@@ -140,6 +155,7 @@ class Command(BaseCommand):
         if '湖南' in r: return 'HN'
         if '安徽' in r: return 'AH'
         if '浙江' in r: return 'ZJ'
+        if '新疆' in r: return 'XJ'
         return None
 
     def convert_price_to_number(self, price_str):
