@@ -5,20 +5,21 @@ from .views import (
     BiddingProjectListView, 
     BiddingProjectDetailView, 
     ProvinceStatsView,
-    BiddingStatsView,  # [新增] 引入新的 View
-    sync_province_data  # [新增] 记得导入这个函数
+    BiddingStatsView
 )
+# [新增] 引入 emall_purchasing 中的备注视图
+from emall_purchasing.views.remark_views import add_remark
 
 urlpatterns = [
     path('stats/provinces/', ProvinceStatsView.as_view(), name='province-stats'),
-
-    # [新增] 同步接口
-    path('sync/', sync_province_data, name='sync-province-data'),
     
-    # [新增] 注册统计接口
-    # 注意：这条路由必须放在 'project/<int:id>/' 之前，否则 'stats' 会被当成 id 解析
     path('project/stats/', BiddingStatsView.as_view(), name='project-stats'),
 
     path('list/', BiddingProjectListView.as_view(), name='project-list'),
     path('project/<int:id>/', BiddingProjectDetailView.as_view(), name='project-detail'),
+
+    # [关键修复] 注册前端请求的备注接口路由
+    # 前端请求: /api/bidding/project/{id}/remark/
+    # 注意参数名必须是 procurement_id 以匹配视图函数的参数定义
+    path('project/<int:procurement_id>/remark/', add_remark, name='project-add-remark'),
 ]

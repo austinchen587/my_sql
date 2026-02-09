@@ -4,11 +4,17 @@ from rest_framework import serializers
 from .models import BiddingProject, ProcurementCommodityResult, ProcurementCommodityBrand
 from django.utils import timezone
 from emall_purchasing.models import ProcurementPurchasing
+from rest_framework import serializers
 
 logger = logging.getLogger(__name__)
 
 class BiddingHallSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(source='pk', read_only=True)
+
+    # [新增] 备注相关字段定义
+    latest_remark_content = serializers.CharField(read_only=True)
+    latest_remark_by = serializers.CharField(read_only=True)
+    latest_remark_at = serializers.DateTimeField(read_only=True, format='%Y-%m-%d %H:%M')
 
     price_display = serializers.SerializerMethodField()
     countdown = serializers.SerializerMethodField()
@@ -28,7 +34,9 @@ class BiddingHallSerializer(serializers.ModelSerializer):
             'id', 'title', 'province', 'root_category', 'sub_category', 'mode',
             'price_display', 'start_time', 'end_time', 'status', 'status_text',
             'countdown', 'requirements', 'recommendations',
-            'is_selected', 'project_owner', 'bidding_status_display', 'bidding_status'
+            'is_selected', 'project_owner', 'bidding_status_display', 'bidding_status',
+            # [新增] 添加到 fields 列表
+            'latest_remark_content', 'latest_remark_by', 'latest_remark_at'
         ]
 
     # ... (get_purchasing_info, get_is_selected 等辅助方法保持不变，省略以节省篇幅) ...
