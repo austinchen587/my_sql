@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class BiddingHallSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(source='pk', read_only=True)
 
-    # [新增] 备注相关字段定义
+    # 备注相关字段
     latest_remark_content = serializers.CharField(read_only=True)
     latest_remark_by = serializers.CharField(read_only=True)
     latest_remark_at = serializers.DateTimeField(read_only=True, format='%Y-%m-%d %H:%M')
@@ -35,11 +35,10 @@ class BiddingHallSerializer(serializers.ModelSerializer):
             'price_display', 'start_time', 'end_time', 'status', 'status_text',
             'countdown', 'requirements', 'recommendations',
             'is_selected', 'project_owner', 'bidding_status_display', 'bidding_status',
-            # [新增] 添加到 fields 列表
             'latest_remark_content', 'latest_remark_by', 'latest_remark_at'
         ]
 
-    # ... (get_purchasing_info, get_is_selected 等辅助方法保持不变，省略以节省篇幅) ...
+    # ... (辅助方法保持不变) ...
     def get_purchasing_info(self, obj):
         try: return obj.source_emall.purchasing_info
         except: return None
@@ -63,6 +62,8 @@ class BiddingHallSerializer(serializers.ModelSerializer):
         target = obj.end_time if (obj.start_time and now >= obj.start_time) else obj.start_time
         if not target or now > target: return 0
         return int((target - now).total_seconds())
+
+    # [核心修改] get_requirements 方法
     def get_requirements(self, obj):
         if self.context.get('view_type') == 'list': return None
         try:
@@ -70,27 +71,55 @@ class BiddingHallSerializer(serializers.ModelSerializer):
             raw_date = getattr(s, 'publish_date', None)
             pub_date = raw_date.strftime('%Y-%m-%d') if hasattr(raw_date, 'strftime') else (str(raw_date) if raw_date else '')
 
-            # [辅助函数] 解析 Postgres 数组字符串 "{内容1, 内容2}"
+            # 解析函数 (包含之前的修复：去除多余引号)
             def parse_pg_array(text):
-                if not text or text == '{}': return []
-                # 去除首尾的花括号
-                content = str(text).strip('{}')
+                if not text: return []
+                text_str = str(text).strip()
+                text_str = text_str.strip("'\"") # 去除首尾引号
+                if text_str == '{}' or text_str == '[]': return []
+                
+                content = text_str.strip('{}[]')
                 if not content: return []
                 
-                # 针对被双引号包裹的长文本 (例如 "{""第一条...""}")
-                if content.startswith('"') and content.endswith('"'):
-                    # 去除首尾引号，并将双引号转义为单引号
-                    return [content[1:-1].replace('""', '"')]
-                
-                # 普通情况按逗号分割
-                return [item.strip() for item in content.split(',')]
+                result = []
+                for item in content.split(','):
+                    item = item.strip()
+                    if (item.startswith('"') and item.endswith('"')) or \
+                       (item.startswith("'") and item.endswith("'")):
+                        item = item[1:-1]
+                    item = item.replace('""', '"')
+                    item = item.strip("[]") 
+                    if item:
+                        result.append(item)
+                return result
 
-            # 1. 解析附件与链接
+            # 1. 获取原始数据
             raw_files = getattr(s, 'download_files', '')
             raw_links = getattr(s, 'related_links', '')
             
-            # 2. [核心新增] 解析商务字段
-            # 对应数据库中的 business_items 和 business_requirements 列
+            # 2. 解析为列表
+            parsed_names = parse_pg_array(raw_files)
+            parsed_urls = parse_pg_array(raw_links)
+            
+            # 3. [新增] 根据 URL 去重
+            unique_names = []
+            unique_urls = []
+            seen_urls = set()
+            
+            # 取两者较短的长度，确保配对安全
+            safe_len = min(len(parsed_names), len(parsed_urls))
+            
+            for i in range(safe_len):
+                url = parsed_urls[i]
+                name = parsed_names[i]
+                
+                # 如果这个 URL 还没出现过，则添加
+                if url not in seen_urls:
+                    seen_urls.add(url)
+                    unique_names.append(name)
+                    unique_urls.append(url)
+
+            # 4. 解析商务字段
             raw_biz_items = getattr(s, 'business_items', '')
             raw_biz_reqs = getattr(s, 'business_requirements', '')
 
@@ -103,11 +132,10 @@ class BiddingHallSerializer(serializers.ModelSerializer):
                 "purchaser": getattr(s, 'purchasing_unit', ''),
                 "url": getattr(s, 'url', ''),
                 
-                # 附件列表
-                "file_names": parse_pg_array(raw_files), 
-                "file_urls": parse_pg_array(raw_links),
+                # 返回去重后的列表
+                "file_names": unique_names, 
+                "file_urls": unique_urls,
 
-                # [核心新增] 返回解析后的商务数据列表
                 "business_items": parse_pg_array(raw_biz_items),
                 "business_reqs": parse_pg_array(raw_biz_reqs)
             }
@@ -115,64 +143,43 @@ class BiddingHallSerializer(serializers.ModelSerializer):
             logger.error(f"解析需求字段失败: {e}")
             return None
 
-    # [核心修复部分]
     def get_recommendations(self, obj):
         if self.context.get('view_type') == 'list': return None
         final_list = []
         try:
             pid = str(obj.pk)
-            
-            # 1. 获取两张表的数据
             brands = ProcurementCommodityBrand.objects.filter(procurement_id=pid)
             results = ProcurementCommodityResult.objects.filter(procurement_id=pid)
             
-            # 2. 建立索引映射
-            # 映射 A: ID -> Result (优先使用)
             id_map = {r.brand_id: r for r in results if r.brand_id is not None}
-            # 映射 B: 名称 -> Result (兜底备用)
             name_map = {r.item_name: r for r in results if r.item_name}
-            
-            # 记录已使用的 result_id，防止重复展示
             used_result_ids = set()
 
-            # --- 阶段一：遍历需求清单 (Brand) ---
             if brands.exists():
                 for b in brands:
-                    # [双重匹配策略]
-                    # 第一步：尝试 ID 严格匹配 (基于你的数据库验证)
                     res = id_map.get(b.id)
-                    
-                    # 第二步：如果 ID 没匹配上，尝试名称匹配 (容错兜底)
                     if not res and b.item_name:
                         res = name_map.get(b.item_name)
                     
-                    # 初始化基础信息
                     item_name = b.item_name
                     spec = b.specifications
                     brand_name = b.suggested_brand 
                     candidates = []
-                    reason = "AI 正在分析中..." # 默认文案优化
+                    reason = "AI 正在分析中..."
                     
                     if res:
-                        # 标记此 Result 已被成功匹配
                         used_result_ids.add(res.id)
-                        
-                        # 融合数据：优先用 Result 的数据覆盖
                         item_name = res.item_name or item_name
                         spec = res.specifications or spec
                         reason = res.selection_reason
                         
-                        # [核心修复] JSON 数据清洗
                         if res.selected_suppliers:
                             raw_str = res.selected_suppliers
                             try:
-                                # 尝试直接解析
                                 candidates = json.loads(raw_str)
                             except:
                                 try:
-                                    # 针对 CSV 格式双引号进行清洗: "" -> "
                                     clean_str = raw_str.replace('""', '"')
-                                    # 去除首尾多余的引号 (如果是字符串包裹)
                                     if clean_str.startswith('"') and clean_str.endswith('"'):
                                         clean_str = clean_str[1:-1]
                                     candidates = json.loads(clean_str)
@@ -186,7 +193,6 @@ class BiddingHallSerializer(serializers.ModelSerializer):
                         "brand": brand_name, 
                         "reason": reason, 
                         "candidates": candidates,
-                        # 补全 Brand 字段
                         "quantity": getattr(b, 'quantity', None),
                         "unit": getattr(b, 'unit', None),
                         "key_word": getattr(b, 'key_word', None),
@@ -194,14 +200,11 @@ class BiddingHallSerializer(serializers.ModelSerializer):
                         "notes": getattr(b, 'notes', None)
                     })
 
-            # --- 阶段二：处理“孤儿”结果 (Result) ---
-            # 只有那些完全没有匹配上 Brand 的 Result 才会在这里显示
             for res in results:
                 if res.id not in used_result_ids:
                     candidates = []
                     if res.selected_suppliers:
                         try:
-                            # 同样的清洗逻辑
                             clean_str = res.selected_suppliers.replace('""', '"')
                             if clean_str.startswith('"') and clean_str.endswith('"'):
                                 clean_str = clean_str[1:-1]

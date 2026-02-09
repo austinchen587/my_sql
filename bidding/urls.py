@@ -9,6 +9,7 @@ from .views import (
 )
 # [新增] 引入 emall_purchasing 中的备注视图
 from emall_purchasing.views.remark_views import add_remark
+from .views.sync import sync_province_data
 
 urlpatterns = [
     path('stats/provinces/', ProvinceStatsView.as_view(), name='province-stats'),
@@ -22,4 +23,6 @@ urlpatterns = [
     # 前端请求: /api/bidding/project/{id}/remark/
     # 注意参数名必须是 procurement_id 以匹配视图函数的参数定义
     path('project/<int:procurement_id>/remark/', add_remark, name='project-add-remark'),
+    # [关键修复] 注册同步数据的路由，解决 404 错误
+    path('sync/', sync_province_data, name='bidding-sync'),
 ]
