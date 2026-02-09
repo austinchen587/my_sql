@@ -13,7 +13,18 @@ logger = logging.getLogger(__name__)
 class Command(BaseCommand):
     help = '将 emall 的原始数据清洗并同步到 bidding 表 (已接入 category 分类表 + 智能关键词兜底)'
 
+    # [新增] 添加命令行参数接收
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--province',
+            type=str,
+            help='指定同步的省份代码 (JX, HN, AH, ZJ)',
+        )
+
     def handle(self, *args, **options):
+        # [新增] 获取参数
+        target_province = options.get('province')
+
         # 1. 预加载分类数据
         self.stdout.write("正在预加载分类数据 (procurement_emall_category)...")
         category_map = {}
@@ -30,6 +41,17 @@ class Command(BaseCommand):
 
         # 2. 开始同步主逻辑
         raw_qs = ProcurementEmall.objects.all()
+
+        # [新增] 如果指定了省份，进行过滤
+        if target_province:
+            prov_map = {'JX': '江西', 'HN': '湖南', 'AH': '安徽', 'ZJ': '浙江'}
+            region_keyword = prov_map.get(target_province)
+            if region_keyword:
+                self.stdout.write(f"正在执行增量同步，目标区域：{region_keyword}...")
+                raw_qs = raw_qs.filter(region__contains=region_keyword)
+            else:
+                self.stdout.write(self.style.WARNING(f"未知的省份代码: {target_province}，将执行全量同步"))
+
         total = raw_qs.count()
         self.stdout.write(f"正在同步 {total} 条原始数据...")
 
@@ -89,7 +111,7 @@ class Command(BaseCommand):
                     defaults={
                         'title': title,
                         'province': province,
-                        'root_category': root_cat,  # <--- 使用修复后的分类
+                        'root_category': root_cat,
                         'sub_category': sub_cat,
                         'mode': mode,
                         'control_price': price,

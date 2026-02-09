@@ -1,16 +1,18 @@
 from rest_framework import generics
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
-from django.db.models import Count
+from django.db.models import Count, Q
+from django.utils import timezone
+from django.core.management import call_command
+# [核心修复] 引入权限和认证装饰器
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.views import APIView
+import threading
+
 from .models import BiddingProject
 from .serializers import BiddingHallSerializer
 
-from django.db.models import Count, Q
-from django.utils import timezone
-from rest_framework.decorators import action
-from rest_framework.response import Response
-
-from rest_framework.views import APIView  # 引入 APIView
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 16
@@ -152,3 +154,37 @@ class BiddingStatsView(APIView):
             "status_dist": status_map,
             "owner_dist": owners_list
         })
+    
+# =========================================================
+# [核心修复] 同步接口: 增加 @authentication_classes([]) 和 @permission_classes([AllowAny])
+# 这会告诉 Django 跳过 CSRF 检查和用户登录验证，允许直接调用
+# =========================================================
+@api_view(['POST'])
+@authentication_classes([]) 
+@permission_classes([AllowAny])
+def sync_province_data(request):
+    """
+    触发后台同步任务的接口
+    URL: /api/bidding/sync/
+    Body: { "province": "JX" }
+    """
+    province = request.data.get('province')
+    
+    # 定义后台任务
+    def run_sync_command():
+        try:
+            print(f"🚀 开始后台同步省份数据: {province}...")
+            # 注意：management command 并不依赖 request.user，所以这里无需认证
+            call_command('sync_bidding', province=province)
+            print(f"✅ 省份 {province} 同步完成")
+        except Exception as e:
+            print(f"❌ 同步失败: {e}")
+
+    # 使用线程异步执行
+    thread = threading.Thread(target=run_sync_command)
+    thread.start()
+    
+    return Response({
+        'success': True,
+        'message': f'已触发 {province} 地区的数据同步任务'
+    })
