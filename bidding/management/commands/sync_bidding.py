@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
-    help = '将 emall 的原始数据清洗并同步到 bidding 表 (仅同步已有商品清单的项目 + 严格分类映射 + 增量更新)'
+    help = '将 emall 数据同步到 bidding 表 (严格映射分类表 + 仅同步有Brand清单的项目 + 增量更新)'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -29,57 +29,66 @@ class Command(BaseCommand):
         target_province = options.get('province')
         force_update = options.get('force')
 
-        # --- 1. 预加载一级分类数据 (Root Category) ---
+        # =================================================================
+        # 1. 预加载分类映射表 (避免 N+1 查询)
+        # =================================================================
+        
+        # 1.1 加载一级分类 (Root Category)
+        # 来源表: procurement_emall_category
+        # 逻辑: record_id (emall_id) -> category (goods, project, service)
         self.stdout.write("正在预加载一级分类映射 (procurement_emall_category)...")
         root_category_map = {}
         try:
             with connection.cursor() as cursor:
-                # 假设 record_id 对应 emall 的 id
                 cursor.execute("SELECT record_id, category FROM procurement_emall_category")
                 rows = cursor.fetchall()
                 for r_id, cat in rows:
                     root_category_map[r_id] = cat
         except Exception as e:
-            self.stdout.write(self.style.WARNING(f"加载一级分类失败或表不存在: {e}"))
+            self.stdout.write(self.style.WARNING(f"加载一级分类失败: {e}"))
 
-        # --- 2. 预加载二级分类数据 (Sub Category) ---
+        # 1.2 加载二级分类 (Sub Category)
+        # 来源表: procurement_commodity_category
+        # 逻辑: procurement_id (emall_id) -> commodity_category (中文名称)
         self.stdout.write("正在预加载二级分类映射 (procurement_commodity_category)...")
-        sub_category_map = {}
+        sub_category_raw_map = {}
         try:
             with connection.cursor() as cursor:
-                # 假设 procurement_id 对应 emall 的 id
                 cursor.execute("SELECT procurement_id, commodity_category FROM procurement_commodity_category")
                 rows = cursor.fetchall()
                 for p_id, c_cat in rows:
-                    sub_category_map[p_id] = c_cat
+                    sub_category_raw_map[p_id] = c_cat
         except Exception as e:
-            self.stdout.write(self.style.WARNING(f"加载二级分类失败或表不存在: {e}"))
+            self.stdout.write(self.style.WARNING(f"加载二级分类失败: {e}"))
 
-        # --- 3. 筛选有效数据 (必须在 procurement_commodity_brand 中存在) ---
+        # =================================================================
+        # 2. 确定同步范围 (过滤逻辑)
+        # =================================================================
+        
         self.stdout.write("正在筛选包含有效商品清单(Brand)的项目...")
+        # 核心过滤条件：必须在 procurement_commodity_brand 表中有记录
         valid_ids = ProcurementCommodityBrand.objects.values_list('procurement_id', flat=True).distinct()
         
-        # 仅查询在 valid_ids 中的项目
+        # 基础查询集
         raw_qs = ProcurementEmall.objects.filter(id__in=valid_ids)
 
-        # 区域过滤
+        # 区域增量过滤
         if target_province:
             prov_map = {'JX': '江西', 'HN': '湖南', 'AH': '安徽', 'ZJ': '浙江', 'XJ': '新疆'}
             region_keyword = prov_map.get(target_province)
             if region_keyword:
-                self.stdout.write(f"正在执行增量同步，目标区域：{region_keyword}...")
+                self.stdout.write(f"正在执行区域筛选，目标区域：{region_keyword}...")
                 raw_qs = raw_qs.filter(region__contains=region_keyword)
 
         total = raw_qs.count()
         self.stdout.write(f"扫描到 {total} 条有效数据，开始同步...")
 
-        success_count = 0
-        skip_count = 0
-        error_count = 0
-        
-        # --- 4. 批量预加载已存在的 BiddingProject (用于增量比对) ---
+        # =================================================================
+        # 3. 预加载存量数据 (用于增量比对)
+        # =================================================================
         existing_projects = {}
         if not force_update:
+            # 必须加载所有参与比对的字段，包括 title 和 category
             existing_projects = {
                 p.source_emall_id: p 
                 for p in BiddingProject.objects.only(
@@ -88,10 +97,16 @@ class Command(BaseCommand):
                 )
             }
 
-        # --- 5. 循环处理 ---
+        success_count = 0
+        skip_count = 0
+        error_count = 0
+
+        # =================================================================
+        # 4. 循环处理数据
+        # =================================================================
         for raw in raw_qs:
             try:
-                # --- 基础字段清洗 ---
+                # --- A. 基础字段清洗 ---
                 province = self.parse_province(raw.region)
                 if not province: continue
 
@@ -102,19 +117,20 @@ class Command(BaseCommand):
                 end = self.parse_time(raw.quote_end_time)
                 new_status = self.calc_status(start, end)
 
-                # --- 严格分类赋值 ---
-                # 1. 一级分类：严格取自 procurement_emall_category，无值则默认为 'goods'
+                # --- B. 严格分类赋值 (核心修复) ---
+                
+                # 1. 一级分类：直接取映射表，默认为 goods
                 root_cat = root_category_map.get(raw.id, 'goods')
 
-                # 2. 二级分类：严格取自 procurement_commodity_category，无值则默认为 'service_other'
-                # 注意：这里直接赋予数据库中的值，不再进行关键字推断
-                sub_cat = sub_category_map.get(raw.id, 'service_other')
+                # 2. 二级分类：取映射表中的中文名，然后转换成代码
+                raw_sub_cat_name = sub_category_raw_map.get(raw.id)
+                sub_cat = self.map_sub_category(raw_sub_cat_name, root_cat)
 
-                # --- 增量比对逻辑 ---
+                # --- C. 增量比对逻辑 ---
                 if not force_update and raw.id in existing_projects:
                     existing = existing_projects[raw.id]
                     
-                    # 比对所有关键字段
+                    # 全字段严格比对
                     is_same = (
                         existing.status == new_status and
                         existing.control_price == price and
@@ -128,14 +144,14 @@ class Command(BaseCommand):
                         skip_count += 1
                         continue
 
-                # --- 执行数据库操作 ---
+                # --- D. 数据库写入 ---
                 BiddingProject.objects.update_or_create(
                     source_emall=raw,
                     defaults={
                         'title': title,
                         'province': province,
-                        'root_category': root_cat,   # 严格映射的值
-                        'sub_category': sub_cat,     # 严格映射的值
+                        'root_category': root_cat,   # 严格映射
+                        'sub_category': sub_cat,     # 严格映射
                         'mode': mode,
                         'control_price': price,
                         'start_time': start,
@@ -149,12 +165,47 @@ class Command(BaseCommand):
 
             except Exception as e:
                 error_count += 1
-                # 仅打印前5个错误，避免刷屏
                 if error_count <= 5:
                     self.stdout.write(self.style.ERROR(f'ID {raw.id} 同步失败: {e}'))
                 continue
 
         self.stdout.write(self.style.SUCCESS(f'同步完成！更新: {success_count}, 跳过: {skip_count}, 失败: {error_count}'))
+
+    # =================================================================
+    # 辅助方法
+    # =================================================================
+
+    def map_sub_category(self, c_name, root_cat):
+        """
+        将 procurement_commodity_category 中的中文分类映射为 bidding 模型的代码
+        """
+        # 如果一级分类不是物资，或者没有二级分类名称，返回默认
+        if not c_name:
+            if root_cat == 'service': return 'service_other'
+            if root_cat == 'project': return 'project_other' # 假设有这个或者都归为 service_other
+            return 'service_other' # 默认兜底
+
+        name = str(c_name).strip()
+
+        # 严格映射逻辑 (物资类7大类)
+        # 根据样本数据: "行政办公耗材", "数码家电", "专业设备与工业品"
+        if '办公' in name or '耗材' in name:
+            return 'office'
+        elif '数码' in name or '家电' in name or '电脑' in name:
+            return 'digital'
+        elif '工业' in name or '设备' in name or '建材' in name:
+            return 'industrial'
+        elif '清洁' in name or '劳保' in name:
+            return 'cleaning'
+        elif '食品' in name or '粮油' in name or '超市' in name:
+            return 'food'
+        elif '体育' in name or '服装' in name or '纺织' in name:
+            return 'sports'
+        elif '家具' in name:
+            # 如果模型里没有 furniture，通常归类到 industrial 或 office，这里假设有或归入 industrial
+            return 'industrial' 
+        
+        return 'service_other'
 
     def parse_province(self, region_str):
         if not region_str: return None
