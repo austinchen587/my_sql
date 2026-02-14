@@ -5,13 +5,13 @@ from django.utils import timezone
 from dateutil import parser
 from django.db import connection
 from emall.models import ProcurementEmall
-from bidding.models import BiddingProject
+from bidding.models import BiddingProject, ProcurementCommodityBrand
 import logging
 
 logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
-    help = '将 emall 的原始数据清洗并同步到 bidding 表 (支持增量更新)'
+    help = '将 emall 的原始数据清洗并同步到 bidding 表 (仅同步已有商品清单的项目 + 严格分类映射 + 增量更新)'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -19,7 +19,6 @@ class Command(BaseCommand):
             type=str,
             help='指定同步的省份代码 (JX, HN, AH, ZJ, XJ)',
         )
-        # [新增] 强制全量更新参数
         parser.add_argument(
             '--force',
             action='store_true',
@@ -28,23 +27,42 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         target_province = options.get('province')
-        force_update = options.get('force') # 获取是否强制更新
+        force_update = options.get('force')
 
-        # 1. 预加载分类数据
-        self.stdout.write("正在预加载分类数据...")
-        category_map = {}
+        # --- 1. 预加载一级分类数据 (Root Category) ---
+        self.stdout.write("正在预加载一级分类映射 (procurement_emall_category)...")
+        root_category_map = {}
         try:
             with connection.cursor() as cursor:
+                # 假设 record_id 对应 emall 的 id
                 cursor.execute("SELECT record_id, category FROM procurement_emall_category")
                 rows = cursor.fetchall()
                 for r_id, cat in rows:
-                    category_map[r_id] = cat
-        except Exception:
-            pass
+                    root_category_map[r_id] = cat
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"加载一级分类失败或表不存在: {e}"))
 
-        # 2. 查询原始数据
-        raw_qs = ProcurementEmall.objects.all()
+        # --- 2. 预加载二级分类数据 (Sub Category) ---
+        self.stdout.write("正在预加载二级分类映射 (procurement_commodity_category)...")
+        sub_category_map = {}
+        try:
+            with connection.cursor() as cursor:
+                # 假设 procurement_id 对应 emall 的 id
+                cursor.execute("SELECT procurement_id, commodity_category FROM procurement_commodity_category")
+                rows = cursor.fetchall()
+                for p_id, c_cat in rows:
+                    sub_category_map[p_id] = c_cat
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"加载二级分类失败或表不存在: {e}"))
 
+        # --- 3. 筛选有效数据 (必须在 procurement_commodity_brand 中存在) ---
+        self.stdout.write("正在筛选包含有效商品清单(Brand)的项目...")
+        valid_ids = ProcurementCommodityBrand.objects.values_list('procurement_id', flat=True).distinct()
+        
+        # 仅查询在 valid_ids 中的项目
+        raw_qs = ProcurementEmall.objects.filter(id__in=valid_ids)
+
+        # 区域过滤
         if target_province:
             prov_map = {'JX': '江西', 'HN': '湖南', 'AH': '安徽', 'ZJ': '浙江', 'XJ': '新疆'}
             region_keyword = prov_map.get(target_province)
@@ -53,25 +71,27 @@ class Command(BaseCommand):
                 raw_qs = raw_qs.filter(region__contains=region_keyword)
 
         total = raw_qs.count()
-        self.stdout.write(f"扫描到 {total} 条原始数据，开始增量同步...")
+        self.stdout.write(f"扫描到 {total} 条有效数据，开始同步...")
 
         success_count = 0
         skip_count = 0
         error_count = 0
         
-        # 批量预加载已存在的 BiddingProject，减少数据库查询
-        #以此 id 为 key，存储 (updated_at, status) 等关键信息用于比对
+        # --- 4. 批量预加载已存在的 BiddingProject (用于增量比对) ---
         existing_projects = {}
         if not force_update:
-            # 只查询必要的字段
             existing_projects = {
                 p.source_emall_id: p 
-                for p in BiddingProject.objects.only('source_emall', 'status', 'control_price', 'end_time')
+                for p in BiddingProject.objects.only(
+                    'source_emall', 'status', 'control_price', 'end_time', 
+                    'title', 'root_category', 'sub_category'
+                )
             }
 
+        # --- 5. 循环处理 ---
         for raw in raw_qs:
             try:
-                # --- 提取与清洗 (保持原有逻辑) ---
+                # --- 基础字段清洗 ---
                 province = self.parse_province(raw.region)
                 if not province: continue
 
@@ -82,52 +102,40 @@ class Command(BaseCommand):
                 end = self.parse_time(raw.quote_end_time)
                 new_status = self.calc_status(start, end)
 
+                # --- 严格分类赋值 ---
+                # 1. 一级分类：严格取自 procurement_emall_category，无值则默认为 'goods'
+                root_cat = root_category_map.get(raw.id, 'goods')
+
+                # 2. 二级分类：严格取自 procurement_commodity_category，无值则默认为 'service_other'
+                # 注意：这里直接赋予数据库中的值，不再进行关键字推断
+                sub_cat = sub_category_map.get(raw.id, 'service_other')
+
                 # --- 增量比对逻辑 ---
                 if not force_update and raw.id in existing_projects:
                     existing = existing_projects[raw.id]
                     
-                    # 检查关键字段是否有变化
-                    # 1. 状态是否变化 (例如时间流逝导致状态变更)
-                    status_changed = existing.status != new_status
-                    # 2. 价格是否变化
-                    price_changed = existing.control_price != price
-                    # 3. 结束时间是否变化
-                    end_time_changed = existing.end_time != end
+                    # 比对所有关键字段
+                    is_same = (
+                        existing.status == new_status and
+                        existing.control_price == price and
+                        existing.end_time == end and
+                        existing.title == title and
+                        existing.root_category == root_cat and
+                        existing.sub_category == sub_cat
+                    )
                     
-                    # 如果没有任何关键变化，则跳过
-                    if not (status_changed or price_changed or end_time_changed):
+                    if is_same:
                         skip_count += 1
                         continue
 
-                # --- 确定分类 (保持原有逻辑) ---
-                db_cat = category_map.get(raw.id)
-                if db_cat in ['goods', 'project', 'service']:
-                    root_cat = db_cat
-                else:
-                    if any(k in title for k in ['工程', '施工', '改造', '修缮', '建设', '安装', '装修', '整治']):
-                        root_cat = 'project'
-                    elif any(k in title for k in ['服务', '维保', '检测', '租赁', '运维', '保养', '外包', '物业']):
-                        root_cat = 'service'
-                    else:
-                        root_cat = 'goods'
-
-                sub_cat = 'service_other'
-                title_search = title 
-                if any(k in title_search for k in ['办公', '纸', '墨']): sub_cat = 'office'
-                elif any(k in title_search for k in ['清洁', '洗', '扫']): sub_cat = 'cleaning'
-                elif any(k in title_search for k in ['电脑', '数码', '屏', '显']): sub_cat = 'digital'
-                elif any(k in title_search for k in ['球', '服', '体育']): sub_cat = 'sports'
-                elif any(k in title_search for k in ['工', '机', '泵', '阀', '梯', '设施']): sub_cat = 'industrial'
-                elif any(k in title_search for k in ['食', '水', '油', '米']): sub_cat = 'food'
-
-                # --- 执行更新或插入 ---
+                # --- 执行数据库操作 ---
                 BiddingProject.objects.update_or_create(
                     source_emall=raw,
                     defaults={
                         'title': title,
                         'province': province,
-                        'root_category': root_cat,
-                        'sub_category': sub_cat,
+                        'root_category': root_cat,   # 严格映射的值
+                        'sub_category': sub_cat,     # 严格映射的值
                         'mode': mode,
                         'control_price': price,
                         'start_time': start,
@@ -136,18 +144,18 @@ class Command(BaseCommand):
                     }
                 )
                 success_count += 1
-                if success_count % 50 == 0: # 降低打印频率
+                if success_count % 50 == 0:
                     self.stdout.write(f"已更新 {success_count} 条...")
 
             except Exception as e:
                 error_count += 1
+                # 仅打印前5个错误，避免刷屏
                 if error_count <= 5:
                     self.stdout.write(self.style.ERROR(f'ID {raw.id} 同步失败: {e}'))
                 continue
 
         self.stdout.write(self.style.SUCCESS(f'同步完成！更新: {success_count}, 跳过: {skip_count}, 失败: {error_count}'))
 
-    # ... (保持原有的辅助函数 parse_province, convert_price_to_number, parse_time, calc_status 不变) ...
     def parse_province(self, region_str):
         if not region_str: return None
         r = str(region_str)
