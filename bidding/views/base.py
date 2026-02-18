@@ -4,10 +4,9 @@ from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, OuterRef, Subquery, CharField, DateTimeField
 from ..models import BiddingProject
 from ..serializers import BiddingHallSerializer
-# [新增] 引入备注模型
 from emall_purchasing.models import UnifiedProcurementRemark
 import logging
-# 自定义分页器
+
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 16
     page_size_query_param = 'page_size'
@@ -26,13 +25,11 @@ class BiddingProjectListView(generics.ListAPIView):
             'source_emall__purchasing_info'
         ).all()
         
-        # [核心修改] 预查询最新备注信息
-        # 关联条件：UnifiedProcurementRemark.procurement == BiddingProject.source_emall
+        # 预查询最新备注信息
         newest_remarks = UnifiedProcurementRemark.objects.filter(
             procurement=OuterRef('source_emall')
         ).order_by('-created_at')
 
-        # 使用 annotate 将子查询结果注入到每个对象中
         qs = qs.annotate(
             latest_remark_content=Subquery(newest_remarks.values('remark_content')[:1], output_field=CharField()),
             latest_remark_by=Subquery(newest_remarks.values('created_by')[:1], output_field=CharField()),
@@ -41,7 +38,6 @@ class BiddingProjectListView(generics.ListAPIView):
         
         p = self.request.query_params
         
-        # ... (原有的过滤逻辑保持不变) ...
         search_term = p.get('search')
         if search_term:
             qs = qs.filter(title__icontains=search_term)
@@ -55,12 +51,10 @@ class BiddingProjectListView(generics.ListAPIView):
         if p.get('mode'):
             qs = qs.filter(mode=p.get('mode'))
 
-        # 归属人搜索
         owner = p.get('owner')
         if owner:
             qs = qs.filter(source_emall__purchasing_info__project_owner__icontains=owner)
 
-        # 已选项目搜索
         is_selected = p.get('is_selected')
         if is_selected:
             if str(is_selected).lower() == 'true':
@@ -71,7 +65,8 @@ class BiddingProjectListView(generics.ListAPIView):
                     Q(source_emall__purchasing_info__isnull=True)
                 )
         
-        return qs.order_by('status', 'start_time')
+        # [核心修复] 改为使用 -pk (primary key)，Django 会自动解析为主键字段
+        return qs.order_by('-pk')
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
