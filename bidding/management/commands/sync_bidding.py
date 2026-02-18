@@ -62,17 +62,36 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(f"加载二级分类失败: {e}"))
 
         # =================================================================
-        # 2. 确定同步范围 (过滤逻辑)
+        # 2. 确定同步范围 (严格筛选：必须有分类 + 符合业务规则)
         # =================================================================
         
-        self.stdout.write("正在筛选包含有效商品清单(Brand)的项目...")
-        # 核心过滤条件：必须在 procurement_commodity_brand 表中有记录
-        valid_ids = ProcurementCommodityBrand.objects.values_list('procurement_id', flat=True).distinct()
+        self.stdout.write("正在执行严格筛选 (去除非法分类及无效物资)...")
+
+        # A. 获取有 Brand 清单的物资项目 ID
+        ids_with_brands = set(ProcurementCommodityBrand.objects.values_list('procurement_id', flat=True).distinct())
+
+        valid_ids = set()
         
-        # 基础查询集
+        # B. 遍历预加载的分类映射表，进行筛选
+        # root_category_map: {id: 'goods'/'service'/'project'}
+        for pid, cat in root_category_map.items():
+            if cat in ['service', 'project']:
+                # 规则1: 服务和工程类，直接放行
+                valid_ids.add(pid)
+            elif cat == 'goods':
+                # 规则2: 物资类，必须在 Brand 表中有记录
+                if pid in ids_with_brands:
+                    valid_ids.add(pid)
+            # 规则3: 如果不在 map 里，或者 cat 是未知类型，这里自然就被过滤掉了
+            
+        # 基础查询集 (只查 valid_ids 里的)
+        if not valid_ids:
+            self.stdout.write(self.style.WARNING("没有符合条件的数据，停止同步。"))
+            return
+
         raw_qs = ProcurementEmall.objects.filter(id__in=valid_ids)
 
-        # 区域增量过滤
+        # 区域增量过滤 (保持不变)
         if target_province:
             prov_map = {'JX': '江西', 'HN': '湖南', 'AH': '安徽', 'ZJ': '浙江', 'XJ': '新疆'}
             region_keyword = prov_map.get(target_province)
@@ -119,8 +138,14 @@ class Command(BaseCommand):
 
                 # --- B. 严格分类赋值 (核心修复) ---
                 
-                # 1. 一级分类：直接取映射表，默认为 goods
-                root_cat = root_category_map.get(raw.id, 'goods')
+                # 1. 一级分类：移除默认值 'goods'
+                # 如果前面的 filter 工作正常，这里一定能取到值；但为了代码健壮性，做个判断
+                root_cat = root_category_map.get(raw.id)
+                
+                if not root_cat:
+                    # 如果没有分类（虽然 valid_ids 应该已经过滤了），再次确保不导入
+                    # skip_count += 1
+                    continue 
 
                 # 2. 二级分类：取映射表中的中文名，然后转换成代码
                 raw_sub_cat_name = sub_category_raw_map.get(raw.id)
