@@ -296,16 +296,24 @@ def get_project_suppliers(request):
 
         # 构建响应
         budget = purchasing.get_total_budget() or 0
+        budget_float = float(budget)
+        
+        # [补充计算利润逻辑]：预算 - 已采纳的供应商成本
+        total_profit = budget_float - total_selected_quote if budget_float > total_selected_quote else 0
+
         response_data = {
             'project_info': {
                 'id': purchasing.procurement.id,
                 'project_title': purchasing.procurement.project_title,
-                'total_budget': float(budget),
+                'total_budget': budget_float,
                 'total_selected_quote': total_selected_quote,
+                'total_profit': total_profit,  # [核心修复] 将计算好的利润返回给前端
             },
             'suppliers': suppliers_info,
-            'requirements': requirements  # [关键] 传给前端用于分组
+            'requirements': requirements  
         }
+
+
         
         return Response(response_data)
         
