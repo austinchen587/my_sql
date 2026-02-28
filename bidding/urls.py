@@ -5,7 +5,8 @@ from .views import (
     BiddingProjectListView, 
     BiddingProjectDetailView, 
     ProvinceStatsView,
-    BiddingStatsView
+    BiddingStatsView,
+    retry_single_item
 )
 # [新增] 引入 emall_purchasing 中的备注视图
 from emall_purchasing.views.remark_views import add_remark
@@ -25,4 +26,7 @@ urlpatterns = [
     path('project/<int:procurement_id>/remark/', add_remark, name='project-add-remark'),
     # [关键修复] 注册同步数据的路由，解决 404 错误
     path('sync/', sync_province_data, name='bidding-sync'),
+
+    # [新增] 单商品重试路由
+    path('item/retry/', retry_single_item, name='item-retry')
 ]

@@ -206,6 +206,7 @@ class BiddingHallSerializer(serializers.ModelSerializer):
                                     candidates = []
                     
                     final_list.append({
+                        "brand_id": b.id,  # 👈 [关键修复] 这里必须加上 brand_id，传给前端！
                         "item_name": item_name, 
                         "specifications": spec, 
                         "brand": brand_name, 

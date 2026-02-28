@@ -71,20 +71,16 @@ class ProcurementCommodityBrand(models.Model):
 # === [修改 2] 结果表 ===
 class ProcurementCommodityResult(models.Model):
     brand_id = models.IntegerField(verbose_name="对应清单ID", null=True, blank=True)
-    
-    # 【核心修改】同样改为 CharField，防止 Django 自动把字符串转成数字导致报错
-    procurement_id = models.CharField(
-        max_length=100, 
-        db_column='procurement_id',
-        verbose_name="原始采购ID",
-        db_index=True
-    )
-    
+    procurement_id = models.CharField(max_length=100, db_column='procurement_id', verbose_name="原始采购ID", db_index=True)
     item_name = models.CharField(max_length=500, null=True)
     specifications = models.TextField(null=True)
     selected_suppliers = models.TextField(null=True)
     selection_reason = models.TextField(null=True)
     model_used = models.CharField(max_length=100, null=True)
+    
+    # 🔥 [新增] 状态字段
+    status = models.CharField(max_length=20, default='completed', null=True) 
+    
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
