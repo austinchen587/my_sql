@@ -10,64 +10,83 @@ class DashboardService:
     def get_procurement_dashboard_stats() -> Dict[str, Any]:
         """
         获取采购项目仪表盘统计数据
-        Returns: 包含各时间段统计数据的字典
+        [核心修复]：全面改用 procurement_emall 的 quote_start_time，并使用 Python 精确控制时间边界
         """
-        # [核心修复]：在 Python 端计算本地时区的准确日期，避免数据库 UTC 时区干扰
         now = timezone.localtime()
         
-        # 1. 今天的日期字符串：'2026.03.01'
-        today_str = now.strftime('%Y.%m.%d')
+        # 1. 今天的起止时间 (00:00:00 到 明天 00:00:00)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow_start = today_start + timedelta(days=1)
         
-        # 2. 本周的起始和结束日期字符串
-        week_start = now - timedelta(days=now.weekday())
-        week_end = week_start + timedelta(days=6)
-        week_start_str = week_start.strftime('%Y.%m.%d')
-        week_end_str = week_end.strftime('%Y.%m.%d')
+        # 2. 本周的起止时间
+        week_start = today_start - timedelta(days=now.weekday())
+        next_week_start = week_start + timedelta(days=7)
         
-        # 3. 本月的匹配前缀：'2026.03.%'
-        month_prefix = now.strftime('%Y.%m.')
-        
-        # 4. 本季度的起始和结束日期
+        # 3. 本月的起止时间
+        month_start = today_start.replace(day=1)
+        if month_start.month == 12:
+            next_month_start = month_start.replace(year=month_start.year + 1, month=1)
+        else:
+            next_month_start = month_start.replace(month=month_start.month + 1)
+            
+        # 4. 本季度的起止时间
         quarter = (now.month - 1) // 3 + 1
         quarter_start_month = 3 * quarter - 2
-        quarter_start_date = now.replace(month=quarter_start_month, day=1)
+        quarter_start = today_start.replace(month=quarter_start_month, day=1)
         if quarter == 4:
-            quarter_end_date = now.replace(year=now.year+1, month=1, day=1) - timedelta(days=1)
+            next_quarter_start = quarter_start.replace(year=quarter_start.year + 1, month=1)
         else:
-            quarter_end_date = now.replace(month=quarter_start_month+3, day=1) - timedelta(days=1)
+            next_quarter_start = quarter_start.replace(month=quarter_start_month + 3)
             
-        quarter_start_str = quarter_start_date.strftime('%Y.%m.%d')
-        quarter_end_str = quarter_end_date.strftime('%Y.%m.%d')
-        
-        # 5. 本年的匹配前缀：'2026.%'
-        year_prefix = now.strftime('%Y.')
+        # 5. 本年的起止时间
+        year_start = today_start.replace(month=1, day=1)
+        next_year_start = year_start.replace(year=year_start.year + 1)
 
-        # 将动态计算的本地时间参数传入 SQL
+        # 使用 quote_start_time::timestamp 配合 >= 和 <，实现100%精准的区间截断
+        # 增加了 IS NOT NULL AND != '' 过滤，防止爬虫抓取的脏数据导致类型转换报错
         sql = """
         SELECT 
-            COUNT(*) FILTER (WHERE publish_date = %s) as today_count,
-            COUNT(*) FILTER (WHERE publish_date >= %s AND publish_date <= %s) as week_count,
-            COUNT(*) FILTER (WHERE publish_date LIKE %s) as month_count,
-            COUNT(*) FILTER (WHERE publish_date >= %s AND publish_date <= %s) as quarter_count,
-            COUNT(*) FILTER (WHERE publish_date LIKE %s) as year_count,
+            COUNT(*) FILTER (
+                WHERE quote_start_time IS NOT NULL AND quote_start_time != '' AND quote_start_time != '-'
+                AND quote_start_time::timestamp >= %s AND quote_start_time::timestamp < %s
+            ) as today_count,
+            
+            COUNT(*) FILTER (
+                WHERE quote_start_time IS NOT NULL AND quote_start_time != '' AND quote_start_time != '-'
+                AND quote_start_time::timestamp >= %s AND quote_start_time::timestamp < %s
+            ) as week_count,
+            
+            COUNT(*) FILTER (
+                WHERE quote_start_time IS NOT NULL AND quote_start_time != '' AND quote_start_time != '-'
+                AND quote_start_time::timestamp >= %s AND quote_start_time::timestamp < %s
+            ) as month_count,
+            
+            COUNT(*) FILTER (
+                WHERE quote_start_time IS NOT NULL AND quote_start_time != '' AND quote_start_time != '-'
+                AND quote_start_time::timestamp >= %s AND quote_start_time::timestamp < %s
+            ) as quarter_count,
+            
+            COUNT(*) FILTER (
+                WHERE quote_start_time IS NOT NULL AND quote_start_time != '' AND quote_start_time != '-'
+                AND quote_start_time::timestamp >= %s AND quote_start_time::timestamp < %s
+            ) as year_count,
+            
             COUNT(*) as total_count
         FROM procurement_emall
         """
         
+        # 参数严格按顺序对应占位符
         params = [
-            today_str,
-            week_start_str, week_end_str,
-            f"{month_prefix}%",
-            quarter_start_str, quarter_end_str,
-            f"{year_prefix}%"
+            today_start, tomorrow_start,
+            week_start, next_week_start,
+            month_start, next_month_start,
+            quarter_start, next_quarter_start,
+            year_start, next_year_start
         ]
         
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
             
-            # 将结果映射到字典
             columns = ['today_count', 'week_count', 'month_count', 'quarter_count', 'year_count', 'total_count']
-            result = dict(zip(columns, row))
-            
-            return result
+            return dict(zip(columns, row))
