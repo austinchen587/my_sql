@@ -1,4 +1,6 @@
 from django.db import connection
+from django.utils import timezone
+from datetime import timedelta
 from typing import Dict, Any, List
 
 class StatusStatsOwnerService:
@@ -8,10 +10,14 @@ class StatusStatsOwnerService:
     def get_procurement_status_stats_by_owner(owner_name: str) -> List[Dict[str, Any]]:
         """
         按时间维度和竞标状态统计指定归属人的已选择项目数量
-        Args:
-            owner_name: 归属人姓名
-        Returns: 包含各状态统计数据的列表
         """
+        # [核心修复] 在 Python 层获取准确的本地（北京）时间边界
+        now = timezone.localtime()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = today_start - timedelta(days=now.weekday())
+        month_start = today_start.replace(day=1)
+        year_start = today_start.replace(month=1, day=1)
+
         sql = """
         WITH status_categories AS (
             SELECT 'not_started' as status UNION ALL
@@ -19,23 +25,15 @@ class StatusStatsOwnerService:
             SELECT 'successful' UNION ALL
             SELECT 'failed' UNION ALL
             SELECT 'cancelled'
-        ),
-        time_periods AS (
-            SELECT 
-                CURRENT_DATE as today_start,
-                DATE_TRUNC('week', CURRENT_DATE) as week_start,
-                DATE_TRUNC('month', CURRENT_DATE) as month_start,
-                DATE_TRUNC('year', CURRENT_DATE) as year_start
         )
         SELECT 
             sc.status,
-            COUNT(*) FILTER (WHERE pp.created_at >= tp.today_start AND pp.is_selected = true AND pp.project_owner = %s) as today,
-            COUNT(*) FILTER (WHERE pp.created_at >= tp.week_start AND pp.is_selected = true AND pp.project_owner = %s) as week,
-            COUNT(*) FILTER (WHERE pp.created_at >= tp.month_start AND pp.is_selected = true AND pp.project_owner = %s) as month,
-            COUNT(*) FILTER (WHERE pp.created_at >= tp.year_start AND pp.is_selected = true AND pp.project_owner = %s) as year,
+            COUNT(*) FILTER (WHERE pp.created_at >= %s AND pp.is_selected = true AND pp.project_owner = %s) as today,
+            COUNT(*) FILTER (WHERE pp.created_at >= %s AND pp.is_selected = true AND pp.project_owner = %s) as week,
+            COUNT(*) FILTER (WHERE pp.created_at >= %s AND pp.is_selected = true AND pp.project_owner = %s) as month,
+            COUNT(*) FILTER (WHERE pp.created_at >= %s AND pp.is_selected = true AND pp.project_owner = %s) as year,
             COUNT(*) FILTER (WHERE pp.is_selected = true AND pp.project_owner = %s) as total
         FROM status_categories sc
-        CROSS JOIN time_periods tp
         LEFT JOIN procurement_purchasing pp ON 
             sc.status = pp.bidding_status 
             AND pp.project_owner = %s
@@ -51,10 +49,18 @@ class StatusStatsOwnerService:
         """
         
         with connection.cursor() as cursor:
-            cursor.execute(sql, [owner_name, owner_name, owner_name, owner_name, owner_name, owner_name])
+            # 严格按照 SQL 中的参数顺序传入：时间, 归属人, 时间, 归属人... 最后是总数和 JOIN 的归属人
+            params = [
+                today_start, owner_name,
+                week_start, owner_name,
+                month_start, owner_name,
+                year_start, owner_name,
+                owner_name,
+                owner_name
+            ]
+            cursor.execute(sql, params)
             rows = cursor.fetchall()
             
-            # 状态显示名称映射
             status_display_map = {
                 'not_started': '未开始',
                 'in_progress': '进行中',
@@ -63,7 +69,6 @@ class StatusStatsOwnerService:
                 'cancelled': '已取消'
             }
             
-            # 将结果映射到字典列表
             columns = ['status', 'today', 'week', 'month', 'year', 'total']
             result = []
             for row in rows:

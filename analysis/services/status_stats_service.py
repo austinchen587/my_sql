@@ -1,4 +1,6 @@
 from django.db import connection
+from django.utils import timezone
+from datetime import timedelta
 from typing import Dict, Any, List
 
 class StatusStatsService:
@@ -10,6 +12,13 @@ class StatusStatsService:
         按时间维度和竞标状态统计已选择项目数量
         Returns: 包含各状态统计数据的列表
         """
+        # [核心修复] 在 Python 层获取准确的本地（北京）时间边界
+        now = timezone.localtime()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = today_start - timedelta(days=now.weekday())
+        month_start = today_start.replace(day=1)
+        year_start = today_start.replace(month=1, day=1)
+
         sql = """
         WITH status_categories AS (
             SELECT 'not_started' as status UNION ALL
@@ -17,23 +26,15 @@ class StatusStatsService:
             SELECT 'successful' UNION ALL
             SELECT 'failed' UNION ALL
             SELECT 'cancelled'
-        ),
-        time_periods AS (
-            SELECT 
-                CURRENT_DATE as today_start,
-                DATE_TRUNC('week', CURRENT_DATE) as week_start,
-                DATE_TRUNC('month', CURRENT_DATE) as month_start,
-                DATE_TRUNC('year', CURRENT_DATE) as year_start
         )
         SELECT 
             sc.status,
-            COUNT(*) FILTER (WHERE pp.created_at >= tp.today_start AND pp.is_selected = true) as today,
-            COUNT(*) FILTER (WHERE pp.created_at >=tp.week_start AND pp.is_selected = true) as week,
-            COUNT(*) FILTER (WHERE pp.created_at >= tp.month_start AND pp.is_selected = true) as month,
-            COUNT(*) FILTER (WHERE pp.created_at >= tp.year_start AND pp.is_selected = true) as year,
+            COUNT(*) FILTER (WHERE pp.created_at >= %s AND pp.is_selected = true) as today,
+            COUNT(*) FILTER (WHERE pp.created_at >= %s AND pp.is_selected = true) as week,
+            COUNT(*) FILTER (WHERE pp.created_at >= %s AND pp.is_selected = true) as month,
+            COUNT(*) FILTER (WHERE pp.created_at >= %s AND pp.is_selected = true) as year,
             COUNT(*) FILTER (WHERE pp.is_selected = true) as total
         FROM status_categories sc
-        CROSS JOIN time_periods tp
         LEFT JOIN procurement_purchasing pp ON sc.status = pp.bidding_status
         GROUP BY sc.status
         ORDER BY 
@@ -47,7 +48,8 @@ class StatusStatsService:
         """
         
         with connection.cursor() as cursor:
-            cursor.execute(sql)
+            # 传入精确的 datetime 对象
+            cursor.execute(sql, [today_start, week_start, month_start, year_start])
             rows = cursor.fetchall()
             
             # 状态显示名称映射
