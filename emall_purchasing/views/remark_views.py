@@ -6,6 +6,7 @@ from rest_framework import status
 from ..models import ProcurementPurchasing, ProcurementRemark
 from .utils import safe_json_loads
 import logging
+from urllib.parse import unquote # [核心修复 1] 引入 URL 解码库
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,11 @@ def add_remark(request, procurement_id):
         if created_by == '未知用户':
             created_by = request.COOKIES.get('username', '未知用户')
             created_role = request.COOKIES.get('userrole', '未知角色')
+        
+        # [核心修复 2]：在这里统一对获取到的用户信息进行解码！
+        # 完美兼容本地(中文)与服务器(URL编码)环境
+        created_by = unquote(created_by)
+        created_role = unquote(created_role)
         
         if not remark_content:
             return Response({'error': '备注内容不能为空'}, status=status.HTTP_400_BAD_REQUEST)
