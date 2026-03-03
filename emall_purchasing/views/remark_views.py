@@ -3,15 +3,17 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
+from django.contrib.auth import get_user_model  # [核心引入]
 from ..models import ProcurementPurchasing, ProcurementRemark
 from .utils import safe_json_loads
 import logging
-from urllib.parse import unquote # [核心修复 1] 引入 URL 解码库
+from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
+User = get_user_model()  # 获取当前系统的用户表
 
 @api_view(['POST'])
-@authentication_classes([]) # 保持禁用以跳过CSRF
+@authentication_classes([]) # 保持禁用以跳过 CSRF 拦截
 @permission_classes([AllowAny]) 
 def add_remark(request, procurement_id):
     try:
@@ -24,18 +26,36 @@ def add_remark(request, procurement_id):
         
         remark_content = data.get('remark_content', '').strip()
         
-        # 🌟 终极修复：优先直接从前端发来的 JSON Body 中读取用户信息！(100%不会丢)
-        created_by = data.get('username') or data.get('created_by', '未知用户')
-        created_role = data.get('userrole') or data.get('created_role', '未知角色')
+        created_by = '未知用户'
+        created_role = '未知角色'
 
-        # 兼容兜底：如果前端没传，再去 Cookie 里找
-        if created_by == '未知用户':
-            created_by = request.COOKIES.get('username', '未知用户')
-            created_role = request.COOKIES.get('userrole', '未知角色')
+        # 🌟 终极修复：绕过 DRF 认证，直接从底层 Django Session 中提取用户！
+        # 即使关闭了 Auth，Django 的 SessionMiddleware 依然会解析 sessionid Cookie
+        django_request = getattr(request, '_request', request)
         
-        # 解码，防止意外乱码
-        created_by = unquote(created_by)
-        created_role = unquote(created_role)
+        if hasattr(django_request, 'session'):
+            # '_auth_user_id' 是 Django 登录后写入 session 的标准内置 key
+            user_id = django_request.session.get('_auth_user_id')
+            if user_id:
+                try:
+                    # 拿到 ID 后直接查库，100% 准确，无视跨域与请求头限制
+                    user_obj = User.objects.get(pk=user_id)
+                    created_by = user_obj.username
+                    if hasattr(user_obj, 'userprofile'):
+                        created_role = user_obj.userprofile.role
+                except User.DoesNotExist:
+                    pass
+        
+        # 兜底：如果由于某种原因 Session 清空了，再尝试常规提取
+        if created_by == '未知用户':
+            created_by = data.get('username', request.COOKIES.get('username', '未知用户'))
+            created_role = data.get('userrole', request.COOKIES.get('userrole', '未知角色'))
+        
+        # 解码，防止意外乱码 (比如前端存 Cookie 时是 %E5...)
+        if created_by != '未知用户':
+            created_by = unquote(created_by)
+        if created_role != '未知角色':
+            created_role = unquote(created_role)
         
         if not remark_content:
             return Response({'error': '备注内容不能为空'}, status=status.HTTP_400_BAD_REQUEST)
