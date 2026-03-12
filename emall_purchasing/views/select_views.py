@@ -124,13 +124,25 @@ class ProcurementSelectView(APIView):
                         existing_result = cur.fetchone()
                         
                         if existing_result:
-                            # 🎯 直接白嫖已有结果！
                             res_item_name, res_specs, res_suppliers, res_reason, res_model, res_status = existing_result
                             
-                            if isinstance(res_suppliers, (dict, list)):
+                            # 🛡️ 终极防御：先尝试解析再重新序列化，确保一定是双引号标准 JSON
+                            try:
+                                if isinstance(res_suppliers, str):
+                                    # 如果是单引号的脏数据，这里会通过 json.loads 报错（如果是 Python 格式字符串则需 eval，但建议直接重写）
+                                    # 我们直接统一处理：
+                                    import ast
+                                    # 如果包含单引号，说明是 Python 字符串表示形式，而非标准 JSON
+                                    if "'" in res_suppliers and '"' not in res_suppliers:
+                                        res_suppliers = ast.literal_eval(res_suppliers)
+                                    else:
+                                        res_suppliers = json.loads(res_suppliers)
+                                
+                                # 统一转为标准 JSON 字符串
                                 res_suppliers_str = json.dumps(res_suppliers, ensure_ascii=False)
-                            else:
-                                res_suppliers_str = res_suppliers
+                            except Exception:
+                                # 如果解析失败，兜底设为空列表
+                                res_suppliers_str = '[]'
                                 
                             # 为当前服务器写一份记录（强行绑定当前服务器的 IP）
                             cur.execute("""
