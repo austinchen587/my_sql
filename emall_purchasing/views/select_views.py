@@ -110,7 +110,7 @@ class ProcurementSelectView(APIView):
                         """, (brand.id, str(procurement_id), brand.item_name, specs))
                         
                         # =========================================================
-                        # 🔥 修复：把 'failed' 也加入共享！失败的结果也值得被复用，免得浪费算力！
+                        # 🔥 修复：优先复用有商品的记录！
                         # =========================================================
                         cur.execute("""
                             SELECT item_name, specifications, selected_suppliers, selection_reason, model_used, status
@@ -118,6 +118,11 @@ class ProcurementSelectView(APIView):
                             WHERE procurement_id = %s 
                               AND item_name = %s 
                               AND status IN ('completed', 'synced', 'failed')
+                            ORDER BY 
+                                -- 优先挑选有数据的（长度大于 2 意味着不是 '[]' 或 '{}')
+                                CASE WHEN length(selected_suppliers::text) > 2 THEN 1 ELSE 2 END,
+                                -- 然后选最新的
+                                id DESC
                             LIMIT 1
                         """, (str(procurement_id), brand.item_name))
                         
