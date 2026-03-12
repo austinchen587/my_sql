@@ -41,12 +41,12 @@ class ProcurementProgressService:
             conn = psycopg2.connect(**DB_CONFIG)
             cur = conn.cursor()
             
-            # 1. 拉取所有状态 (包含已同步过的，防止多台服务器抢单时间差)
+            # 1. 绝不拉取 'synced'，只拉取真正需要同步的 'completed' 和 'failed'
             cur.execute("""
                 SELECT id, brand_id, item_name, specifications, selected_suppliers, selection_reason, model_used, status 
                 FROM procurement_commodity_result 
                 WHERE procurement_id = %s AND server_ip = %s 
-                  AND status IN ('completed', 'synced', 'failed')
+                  AND status IN ('completed', 'failed')  # 👈 删掉 'synced'
             """, (str(procurement_id), current_server))
             
             rows = cur.fetchall()
@@ -83,9 +83,43 @@ class ProcurementProgressService:
                     # ✅ 只有状态是成功且有供应商数据时，才写入供应商表
                     if res_status in ['completed', 'synced'] and suppliers_json:
                         suppliers_data = json.loads(suppliers_json) if isinstance(suppliers_json, str) else suppliers_json
+                        
                         for idx, item in enumerate(suppliers_data):
-                            # ... 这里是你原本创建 Supplier 和 SupplierCommodity 的逻辑 ...
-                            pass
+                            # 1. 创建或获取供应商 (Supplier)
+                            # 从 AI 的结果中拿到店铺名 (shop) 和平台 (platform)
+                            shop_name = item.get('shop') or f'智能推荐供应商_{idx+1}'
+                            supplier, created = Supplier.objects.get_or_create(
+                                name=shop_name,
+                                defaults={
+                                    'source': item.get('platform', 'AI寻源'),
+                                    'purchaser_created_by': 'AI_Auto',
+                                    'purchaser_created_role': 'system'
+                                }
+                            )
+                            
+                            # 2. 将这个供应商与当前采购项目绑定 (ProcurementSupplier)
+                            ProcurementSupplier.objects.get_or_create(
+                                procurement=purchasing_info,
+                                supplier=supplier,
+                                defaults={
+                                    'purchaser_created_by': 'AI_Auto',
+                                    'purchaser_created_role': 'system'
+                                }
+                            )
+                            
+                            # 3. 将 AI 推荐的具体商品存入商品明细表 (SupplierCommodity)
+                            SupplierCommodity.objects.get_or_create(
+                                supplier=supplier,
+                                name=item_name,  # 商品名，如 "固态硬盘"
+                                product_url=item.get('detail_url', ''), # 商品链接
+                                defaults={
+                                    'price': item.get('price', 0), # AI抓到的价格
+                                    'quantity': 1, # 默认给1个
+                                    'specification': item.get('reason', '')[:1000], # 把 AI 的具体推荐理由填到规格备注里
+                                    'purchaser_created_by': 'AI_Auto',
+                                    'purchaser_created_role': 'system'
+                                }
+                            )
                     
                     # ✅ 无论成功失败，都在备注里同步 AI 的审计理由
                     if reason:

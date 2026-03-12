@@ -150,6 +150,7 @@ class ProcurementSelectView(APIView):
                                 res_suppliers_str = '[]'
                                 
                             # 为当前服务器写一份记录（强行绑定当前服务器的 IP）
+                            # 为当前服务器写一份记录（强制把插入状态设为 'completed'）
                             cur.execute("""
                                 INSERT INTO procurement_commodity_result 
                                 (brand_id, server_ip, procurement_id, item_name, specifications, selected_suppliers, selection_reason, model_used, status)
@@ -158,7 +159,7 @@ class ProcurementSelectView(APIView):
                                     selected_suppliers = EXCLUDED.selected_suppliers,
                                     selection_reason = EXCLUDED.selection_reason,
                                     status = EXCLUDED.status;
-                            """, (brand.id, current_server, str(procurement_id), res_item_name, res_specs, res_suppliers_str, f"【跨服共享】{res_reason}", res_model, res_status))
+                            """, (brand.id, current_server, str(procurement_id), res_item_name, res_specs, res_suppliers_str, f"【跨服共享】{res_reason}", res_model, 'completed')) # 👈 注意这里：最后一个参数强制改成 'completed'
                             
                             shared_count += 1
                             logger.info(f"🎉 [跨服共享] 发现云端已有 {brand.item_name} 的结果(状态:{res_status})！服务器 {current_server} 瞬间复用！")
