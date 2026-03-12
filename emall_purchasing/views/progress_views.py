@@ -21,7 +21,8 @@ class ProcurementProgressView(APIView):
             logger.info(f"开始获取采购进度信息，ID: {procurement_id}")
             
             service = ProcurementProgressService()
-            response_data = service.get_procurement_progress(procurement_id)
+            # 👉 [修改] 这里把 request 传进去，为了获取当前服务器的 IP
+            response_data = service.get_procurement_progress(procurement_id, request)
             
             logger.info(f"成功构建响应数据，供应商数量: {len(response_data['suppliers_info'])}, 备注数量: {len(response_data['remarks_history'])}")
             return Response(response_data)

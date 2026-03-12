@@ -1,5 +1,9 @@
+# D:\code\web_sys\my_sql\bidding\views\sync.py
 import threading
-import logging 
+import logging
+import json
+import redis 
+import psycopg2  # 👉 [新增] 用于直连云端数据库同步数据
 from django.core.management import call_command
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
@@ -8,16 +12,32 @@ from ..models import ProcurementCommodityResult, ProcurementCommodityBrand
 
 logger = logging.getLogger(__name__)
 
+# ==============================================================================
+# 🔥 [分布式改造] Redis 与 云端数据库 连接配置
+# ==============================================================================
+REDIS_CONFIG = {
+    'host': '121.43.77.214', 
+    'port': 6379,
+    'password': 'austinchen587', 
+    'decode_responses': True
+}
+r_client = redis.Redis(**REDIS_CONFIG)
+
+# 👉 [新增] 云端中央大本营数据库配置
+DB_CONFIG = {
+    'host': '121.43.77.214',
+    'port': 5432,
+    'dbname': 'austinchen587_db',
+    'user': 'austinchen587',
+    'password': 'austinchen587'
+}
+
 @api_view(['POST'])
 @authentication_classes([]) 
 @permission_classes([AllowAny])
 def sync_province_data(request):
-    """
-    触发后台同步任务的接口
-    URL: /api/bidding/sync/
-    """
+    """触发后台同步任务的接口"""
     province = request.data.get('province')
-    
     if not province:
         return Response({'success': False, 'message': '缺少 province 参数'}, status=400)
 
@@ -42,57 +62,88 @@ def sync_province_data(request):
 @authentication_classes([]) 
 @permission_classes([AllowAny])
 def retry_single_item(request):
-    """
-    单商品重试 & 修改关键词接口
-    URL: /api/bidding/item/retry/
-    """
+    """【修复版】重新寻源接口"""
     brand_id = request.data.get('brand_id')
     new_keyword = request.data.get('new_keyword')
-    new_platform = request.data.get('new_platform') # 接收前端传来的新平台
+    new_platform = request.data.get('new_platform')
     
-    logger.info(f"📥 [人工派单] 收到前端重新寻源指令 | BrandID={brand_id} | 新关键词='{new_keyword}' | 新平台='{new_platform}'")
+    current_server = request.get_host().split(':')[0]
     
     if not brand_id:
-        logger.warning("❌ [人工派单] 失败：缺少商品ID (brand_id)")
-        return Response({'success': False, 'message': '缺少商品ID (brand_id)'}, status=400)
+        return Response({'success': False, 'message': '缺少商品ID'}, status=400)
 
     try:
-        # 1. 动态构造更新字段，同时写入 keyword 和 search_platform
-        update_fields = {}
-        if new_keyword:
-            update_fields['key_word'] = new_keyword
-        if new_platform:
-            update_fields['search_platform'] = new_platform
-            
-        if update_fields:
-            ProcurementCommodityBrand.objects.filter(id=brand_id).update(**update_fields)
-            logger.info(f"   ✏️ [数据库] 已更新 Brand 表字段: {update_fields}")
+        brand_obj = ProcurementCommodityBrand.objects.get(id=brand_id)
+        if new_keyword or new_platform:
+            if new_keyword: brand_obj.key_word = new_keyword
+            if new_platform: brand_obj.search_platform = new_platform
+            brand_obj.save()
 
-        # 2. 将对应 brand_id 的结果状态改为 retry，并重置原因
-        updated_count = ProcurementCommodityResult.objects.filter(brand_id=brand_id).update(
-            status='retry',
-            selection_reason='AI 正在全网寻源中，请稍后刷新...'
-        )
-        
-        # 3. 如果结果表里连记录都没有，创建一条占位符
-        if updated_count == 0:
-            ProcurementCommodityResult.objects.create(
+        # 👉 [修复 1] 移除 exclude(server_ip=...)
+        existing_success = ProcurementCommodityResult.objects.filter(
+            brand_id=brand_id, 
+            status='completed'
+        ).first()
+
+        if existing_success and not new_keyword:
+            # 👉 [修复 2] 移除 server_ip=current_server
+            ProcurementCommodityResult.objects.update_or_create(
                 brand_id=brand_id,
-                item_name="前端触发手动重试",
-                selection_reason="AI 正在全网寻源中，请稍后刷新...",
-                status='retry'
+                defaults={
+                    'item_name': existing_success.item_name,
+                    'specifications': existing_success.specifications,
+                    'selected_suppliers': existing_success.selected_suppliers,
+                    'selection_reason': f"直接复用已有的同步结果",
+                    'model_used': existing_success.model_used,
+                    'status': 'completed'
+                }
             )
-            logger.info(f"   ➕ [数据库] Result 表中无历史记录，已创建全新的 retry 占位符")
-        else:
-            logger.info(f"   🔄 [数据库] 已将 Result 表中的历史状态重置为 'retry'")
+            return Response({'success': True, 'message': '✅ 已直接复用抓取结果'})
 
-        logger.info(f"✅ [人工派单] 成功！商品 (BrandID={brand_id}) 已加入 AI 爬虫队列...")
+        # 👉 [修复 3] 移除 server_ip=current_server
+        ProcurementCommodityResult.objects.update_or_create(
+            brand_id=brand_id,
+            defaults={
+                'status': 'retry',
+                'selection_reason': f'服务器 {current_server} 正在重新寻源中...',
+                'item_name': brand_obj.item_name
+            }
+        )
 
-        return Response({
-            'success': True, 
-            'message': '✅ 已加入寻源队列，预计 1-3 分钟后出结果'
-        })
-        
+        # === 后面云端同步和 Redis 派发的代码保持不变 ===
+        try:
+            conn = psycopg2.connect(**DB_CONFIG)
+            cur = conn.cursor()
+            cur.execute("ALTER TABLE procurement_commodity_brand ADD COLUMN IF NOT EXISTS specifications TEXT;")
+            conn.commit()
+            
+            specs = getattr(brand_obj, 'specifications', '')
+            cur.execute("""
+                INSERT INTO procurement_commodity_brand (id, procurement_id, item_name, specifications)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET 
+                    item_name = EXCLUDED.item_name,
+                    specifications = EXCLUDED.specifications;
+            """, (brand_obj.id, str(brand_obj.procurement_id), brand_obj.item_name, specs))
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            logger.error(f"❌ [云端同步] 同步单条商品需求失败: {e}")
+
+        task_payload = {
+            "brand_id": brand_id,
+            "server_ip": current_server, 
+            "item_name": brand_obj.item_name,
+            "key_word": brand_obj.key_word or brand_obj.item_name,
+            "platform": brand_obj.search_platform or "淘宝",
+            "procurement_id": brand_obj.procurement_id
+        }
+        r_client.lpush("crawler_task_queue", json.dumps(task_payload))
+
+        return Response({'success': True, 'message': f'✅ 任务已提交'})
+
     except Exception as e:
-        logger.error(f"❌ [人工派单] 数据库操作失败: {str(e)}")
-        return Response({'success': False, 'message': f'操作失败: {str(e)}'}, status=500)
+        logger.error(f"❌ 派单失败: {str(e)}")
+        return Response({'success': False, 'message': str(e)}, status=500)
