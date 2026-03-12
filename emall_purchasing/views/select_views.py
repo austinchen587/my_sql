@@ -36,6 +36,26 @@ DB_CONFIG = {
     'password': 'austinchen587'
 }
 
+# 👉 [新增] 穿透反向代理获取真实前端 IP 的终极函数
+def get_real_server_ip(request):
+    # 1. 优先尝试 Referer (最可靠，代理一般不改这个)
+    # 比如 'http://116.62.86.107:3000/bidding/detail/21873'
+    referer = request.META.get('HTTP_REFERER', '')
+    if referer:
+        return referer.split('://')[-1].split(':')[0].split('/')[0]
+    
+    # 2. 尝试 Origin 和 X-Forwarded-Host
+    origin = request.META.get('HTTP_ORIGIN', '')
+    if origin:
+        return origin.split('://')[-1].split(':')[0]
+    
+    xff_host = request.META.get('HTTP_X_FORWARDED_HOST', '')
+    if xff_host:
+        return xff_host.split(':')[0]
+        
+    # 3. 兜底
+    return request.get_host().split(':')[0]
+
 
 class ProcurementSelectView(APIView):
     def post(self, request, procurement_id):
@@ -62,9 +82,8 @@ class ProcurementSelectView(APIView):
             # ==============================================================
             if purchasing_info.is_selected:
                 try:
-                    # 🛡️ 捕获真实的前端所在 IP，防止被反向代理篡改为 localhost
-                    origin = request.META.get('HTTP_ORIGIN', '')
-                    current_server = origin.split('://')[-1].split(':')[0] if origin else request.get_host().split(':')[0]
+                    # 🛡️ 使用我们新写的穿透函数获取真实 IP
+                    current_server = get_real_server_ip(request)
                     brands = ProcurementCommodityBrand.objects.filter(procurement_id=procurement_id)
                     
                     # 1. 连接云端中央数据库
@@ -91,14 +110,14 @@ class ProcurementSelectView(APIView):
                         """, (brand.id, str(procurement_id), brand.item_name, specs))
                         
                         # =========================================================
-                        # 🔥 [核心修复：SKU 与 AI 结果的跨服共享] 
+                        # 🔥 修复：把 'failed' 也加入共享！失败的结果也值得被复用，免得浪费算力！
                         # =========================================================
                         cur.execute("""
-                            SELECT item_name, specifications, selected_suppliers, selection_reason, model_used
+                            SELECT item_name, specifications, selected_suppliers, selection_reason, model_used, status
                             FROM procurement_commodity_result
                             WHERE procurement_id = %s 
                               AND item_name = %s 
-                              AND status IN ('completed', 'synced')
+                              AND status IN ('completed', 'synced', 'failed')
                             LIMIT 1
                         """, (str(procurement_id), brand.item_name))
                         
@@ -106,26 +125,26 @@ class ProcurementSelectView(APIView):
                         
                         if existing_result:
                             # 🎯 直接白嫖已有结果！
-                            res_item_name, res_specs, res_suppliers, res_reason, res_model = existing_result
+                            res_item_name, res_specs, res_suppliers, res_reason, res_model, res_status = existing_result
                             
                             if isinstance(res_suppliers, (dict, list)):
                                 res_suppliers_str = json.dumps(res_suppliers, ensure_ascii=False)
                             else:
                                 res_suppliers_str = res_suppliers
                                 
-                            # 为当前服务器写一份 completed 记录（强行绑定当前服务器的本地 brand.id）
+                            # 为当前服务器写一份记录（强行绑定当前服务器的 IP）
                             cur.execute("""
                                 INSERT INTO procurement_commodity_result 
                                 (brand_id, server_ip, procurement_id, item_name, specifications, selected_suppliers, selection_reason, model_used, status)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'completed')
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                                 ON CONFLICT (brand_id, server_ip) DO UPDATE SET 
                                     selected_suppliers = EXCLUDED.selected_suppliers,
                                     selection_reason = EXCLUDED.selection_reason,
-                                    status = 'completed';
-                            """, (brand.id, current_server, str(procurement_id), res_item_name, res_specs, res_suppliers_str, f"【跨服共享】{res_reason}", res_model))
+                                    status = EXCLUDED.status;
+                            """, (brand.id, current_server, str(procurement_id), res_item_name, res_specs, res_suppliers_str, f"【跨服共享】{res_reason}", res_model, res_status))
                             
                             shared_count += 1
-                            logger.info(f"🎉 [跨服共享] 发现云端已有 {brand.item_name} 的结果！服务器 {current_server} 瞬间复用，跳过爬虫！")
+                            logger.info(f"🎉 [跨服共享] 发现云端已有 {brand.item_name} 的结果(状态:{res_status})！服务器 {current_server} 瞬间复用！")
                         else:
                             # 没有缓存，老老实实派发给爬虫
                             task_payload = {

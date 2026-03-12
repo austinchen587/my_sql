@@ -32,6 +32,22 @@ DB_CONFIG = {
     'password': 'austinchen587'
 }
 
+def get_real_server_ip(request):
+    referer = request.META.get('HTTP_REFERER', '')
+    if referer:
+        return referer.split('://')[-1].split(':')[0].split('/')[0]
+    origin = request.META.get('HTTP_ORIGIN', '')
+    if origin:
+        return origin.split('://')[-1].split(':')[0]
+    xff_host = request.META.get('HTTP_X_FORWARDED_HOST', '')
+    if xff_host:
+        return xff_host.split(':')[0]
+    return request.get_host().split(':')[0]
+
+
+
+
+
 @api_view(['POST'])
 @authentication_classes([]) 
 @permission_classes([AllowAny])
@@ -67,9 +83,8 @@ def retry_single_item(request):
     new_keyword = request.data.get('new_keyword')
     new_platform = request.data.get('new_platform')
     
-    # 🛡️ 捕获真实的前端所在 IP，防止被反向代理篡改为 localhost
-    origin = request.META.get('HTTP_ORIGIN', '')
-    current_server = origin.split('://')[-1].split(':')[0] if origin else request.get_host().split(':')[0]
+    # 🛡️ 使用强力穿透函数
+    current_server = get_real_server_ip(request)
     
     if not brand_id:
         return Response({'success': False, 'message': '缺少商品ID'}, status=400)

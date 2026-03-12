@@ -28,9 +28,14 @@ class ProcurementProgressService:
 
     # 👉 [新增核心方法] 从云端中央库把 AI 结果拉回本地变成真实的供应商！
     def _sync_ai_results_from_central(self, procurement_id, request):
-        # 🛡️ 捕获真实的前端所在 IP，防止被反向代理篡改为 localhost
-        origin = request.META.get('HTTP_ORIGIN', '')
-        current_server = origin.split('://')[-1].split(':')[0] if origin else request.get_host().split(':')[0]
+        # 🛡️ 使用强力穿透函数获取发起刷新的真实 IP
+        referer = request.META.get('HTTP_REFERER', '')
+        # 👇 补上这 4 行！把 referer 变成 current_server
+        if referer:
+            current_server = referer.split('://')[-1].split(':')[0].split('/')[0]
+        else:
+            current_server = request.get_host().split(':')[0]
+            
         try:
             conn = psycopg2.connect(**DB_CONFIG)
             cur = conn.cursor()
