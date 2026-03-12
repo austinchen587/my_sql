@@ -62,7 +62,9 @@ class ProcurementSelectView(APIView):
             # ==============================================================
             if purchasing_info.is_selected:
                 try:
-                    current_server = request.get_host().split(':')[0]
+                    # 🛡️ 捕获真实的前端所在 IP，防止被反向代理篡改为 localhost
+                    origin = request.META.get('HTTP_ORIGIN', '')
+                    current_server = origin.split('://')[-1].split(':')[0] if origin else request.get_host().split(':')[0]
                     brands = ProcurementCommodityBrand.objects.filter(procurement_id=procurement_id)
                     
                     # 1. 连接云端中央数据库
@@ -94,9 +96,11 @@ class ProcurementSelectView(APIView):
                         cur.execute("""
                             SELECT item_name, specifications, selected_suppliers, selection_reason, model_used
                             FROM procurement_commodity_result
-                            WHERE brand_id = %s AND status = 'completed'
+                            WHERE procurement_id = %s 
+                              AND item_name = %s 
+                              AND status IN ('completed', 'synced')
                             LIMIT 1
-                        """, (brand.id,))
+                        """, (str(procurement_id), brand.item_name))
                         
                         existing_result = cur.fetchone()
                         
@@ -104,13 +108,12 @@ class ProcurementSelectView(APIView):
                             # 🎯 直接白嫖已有结果！
                             res_item_name, res_specs, res_suppliers, res_reason, res_model = existing_result
                             
-                            # 处理 JSON 格式兼容
                             if isinstance(res_suppliers, (dict, list)):
                                 res_suppliers_str = json.dumps(res_suppliers, ensure_ascii=False)
                             else:
                                 res_suppliers_str = res_suppliers
                                 
-                            # 为当前服务器写一份 completed 记录，直接触发前端展示
+                            # 为当前服务器写一份 completed 记录（强行绑定当前服务器的本地 brand.id）
                             cur.execute("""
                                 INSERT INTO procurement_commodity_result 
                                 (brand_id, server_ip, procurement_id, item_name, specifications, selected_suppliers, selection_reason, model_used, status)
@@ -122,7 +125,7 @@ class ProcurementSelectView(APIView):
                             """, (brand.id, current_server, str(procurement_id), res_item_name, res_specs, res_suppliers_str, f"【跨服共享】{res_reason}", res_model))
                             
                             shared_count += 1
-                            logger.info(f"🎉 [跨服共享] 发现中央库已有结果！服务器 {current_server} 直接复用 BrandID: {brand.id} 的数据，跳过爬虫！")
+                            logger.info(f"🎉 [跨服共享] 发现云端已有 {brand.item_name} 的结果！服务器 {current_server} 瞬间复用，跳过爬虫！")
                         else:
                             # 没有缓存，老老实实派发给爬虫
                             task_payload = {

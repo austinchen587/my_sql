@@ -67,7 +67,9 @@ def retry_single_item(request):
     new_keyword = request.data.get('new_keyword')
     new_platform = request.data.get('new_platform')
     
-    current_server = request.get_host().split(':')[0]
+    # 🛡️ 捕获真实的前端所在 IP，防止被反向代理篡改为 localhost
+    origin = request.META.get('HTTP_ORIGIN', '')
+    current_server = origin.split('://')[-1].split(':')[0] if origin else request.get_host().split(':')[0]
     
     if not brand_id:
         return Response({'success': False, 'message': '缺少商品ID'}, status=400)
