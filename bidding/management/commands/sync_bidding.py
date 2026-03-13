@@ -17,7 +17,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--province',
             type=str,
-            help='指定同步的省份代码 (JX, HN, AH, ZJ, XJ)',
+            help='指定同步的省份代码 (JX, HN, AH, ZJ, XJ, GZ)',
         )
         parser.add_argument(
             '--force',
@@ -93,7 +93,7 @@ class Command(BaseCommand):
 
         # 区域增量过滤 (保持不变)
         if target_province:
-            prov_map = {'JX': '江西', 'HN': '湖南', 'AH': '安徽', 'ZJ': '浙江', 'XJ': '新疆'}
+            prov_map = {'JX': '江西', 'HN': '湖南', 'AH': '安徽', 'ZJ': '浙江', 'XJ': '新疆', 'GZ': '贵州'}
             region_keyword = prov_map.get(target_province)
             if region_keyword:
                 self.stdout.write(f"正在执行区域筛选，目标区域：{region_keyword}...")
@@ -240,6 +240,7 @@ class Command(BaseCommand):
         if '安徽' in r: return 'AH'
         if '浙江' in r: return 'ZJ'
         if '新疆' in r: return 'XJ'
+        if '贵州' in r: return 'GZ'
         return None
 
     def convert_price_to_number(self, price_str):
