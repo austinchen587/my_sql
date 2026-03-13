@@ -46,7 +46,7 @@ class ProcurementProgressService:
                 SELECT id, brand_id, item_name, specifications, selected_suppliers, selection_reason, model_used, status 
                 FROM procurement_commodity_result 
                 WHERE procurement_id = %s AND server_ip = %s 
-                  AND status IN ('completed', 'failed')  # 👈 删掉 'synced'
+                  AND status IN ('completed', 'failed')
             """, (str(procurement_id), current_server))
             
             rows = cur.fetchall()
