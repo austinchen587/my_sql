@@ -155,7 +155,11 @@ def auto_import_from_ai(purchasing):
 def project_list(request):
     """获取进行中的项目列表"""
     time_filter = request.GET.get('time_filter', 'today')
-    queryset = ProcurementPurchasing.objects.filter(is_selected=True).select_related('procurement')
+    # [新增核心条件]: 增加 bidding_status='in_progress'
+    queryset = ProcurementPurchasing.objects.filter(
+        is_selected=True, 
+        bidding_status='in_progress'  
+    ).select_related('procurement')
     
     now = timezone.now()
     if time_filter == 'today':

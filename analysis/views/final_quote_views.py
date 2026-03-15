@@ -37,10 +37,12 @@ def update_final_quote(request):
                     'error': f'项目 "{project_name}" 不存在于采购项目中'
                 }, status=404)
             
-            # 修改查询逻辑：通过 procurement_purchasing 表关联
+            # [核心修改]：在这里加上 exclude，排除项目状态为 未开始(not_started) 和 已取消(cancelled) 的情况
             updated_count = ProcurementSupplier.objects.filter(
                 procurement__procurement__project_name=project_name,
                 is_selected=True
+            ).exclude(
+                procurement__bidding_status__in=['not_started', 'cancelled']
             ).update(
                 final_negotiated_quote=final_quote,
                 final_quote_modified_by=modified_by,
