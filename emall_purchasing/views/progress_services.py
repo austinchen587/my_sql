@@ -85,17 +85,25 @@ class ProcurementProgressService:
                         suppliers_data = json.loads(suppliers_json) if isinstance(suppliers_json, str) else suppliers_json
                         
                         for idx, item in enumerate(suppliers_data):
-                            # 1. 创建或获取供应商 (Supplier)
+                            ## 1. 创建或获取供应商 (Supplier)
                             # 从 AI 的结果中拿到店铺名 (shop) 和平台 (platform)
                             shop_name = item.get('shop') or f'智能推荐供应商_{idx+1}'
-                            supplier, created = Supplier.objects.get_or_create(
-                                name=shop_name,
-                                defaults={
-                                    'source': item.get('platform', 'AI寻源'),
-                                    'purchaser_created_by': 'AI_Auto',
-                                    'purchaser_created_role': 'system'
-                                }
-                            )
+                            
+                            # [核心修复] 优先在当前项目关联的供应商中查找，防崩溃 + 防污染
+                            proc_supplier = ProcurementSupplier.objects.filter(
+                                procurement=purchasing_info, 
+                                supplier__name=shop_name
+                            ).first()
+                            
+                            if proc_supplier:
+                                supplier = proc_supplier.supplier
+                            else:
+                                supplier = Supplier.objects.create(
+                                    name=shop_name,
+                                    source=item.get('platform', 'AI寻源'),
+                                    purchaser_created_by='AI_Auto',
+                                    purchaser_created_role='system'
+                                )
                             
                             # 2. 将这个供应商与当前采购项目绑定 (ProcurementSupplier)
                             ProcurementSupplier.objects.get_or_create(
