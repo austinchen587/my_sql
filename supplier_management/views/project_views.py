@@ -264,12 +264,16 @@ def get_project_suppliers(request):
             # 查找该供应商在这个项目里的所有商品
             commodities = SupplierCommodity.objects.filter(supplier=supplier)
             
+            # [核心逻辑升级] 判断该供应商是否为“当前项目专属”
+            # 如果它没有关联其他任何项目，说明是全新/手动添加的，不需要执行严格的防污染过滤
+            is_exclusive = not ProcurementSupplier.objects.filter(supplier=supplier).exclude(procurement=purchasing).exists()
+            
             comm_data = []
             s_total = 0
             for c in commodities:
-                # [核心修复]：如果商品名称不在当前项目的需求清单里，直接跳过！
                 c_name_clean = str(c.name).strip()
-                if valid_item_names and c_name_clean not in valid_item_names:
+                # 只有针对“历史遗留的全局共享供应商”，才执行严格的商品名称白名单校验
+                if not is_exclusive and valid_item_names and c_name_clean not in valid_item_names:
                     continue
                 
                 qty = int(c.quantity or 0)
