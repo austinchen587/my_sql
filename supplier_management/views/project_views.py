@@ -102,11 +102,18 @@ def auto_import_from_ai(purchasing):
                         price = 0
                     url = item.get('detail_url', '') or item.get('link', '')
 
-                    # 确保供应商存在
-                    supplier, _ = Supplier.objects.get_or_create(
-                        name=shop_name,
-                        defaults={'source': 'AI推荐', 'contact': '系统自动采集', 'store_name': shop_name}
-                    )
+                    ## 修复：优先在当前项目的供应商里找，找不到必须新建！
+                    # 坚决不复用其他项目的同名供应商，防止商品池交叉污染
+                    proc_supplier = ProcurementSupplier.objects.filter(procurement=purchasing, supplier__name=shop_name).first()
+                    if proc_supplier:
+                        supplier = proc_supplier.supplier
+                    else:
+                        supplier = Supplier.objects.create(
+                            name=shop_name,
+                            source='AI推荐',
+                            contact='系统自动采集',
+                            store_name=shop_name
+                        )
 
                     # 关联供应商
                     ProcurementSupplier.objects.get_or_create(
@@ -233,6 +240,20 @@ def get_project_suppliers(request):
         # 1. 触发一次自动导入/修正
         auto_import_from_ai(purchasing)
 
+        # --- [新增修复] 提取当前项目的合法商品名称，用于过滤历史脏数据 ---
+        valid_item_names = set()
+        brands = ProcurementCommodityBrand.objects.filter(procurement_id=purchasing.procurement.id)
+        for b in brands:
+            if b.item_name: valid_item_names.add(str(b.item_name).strip())
+            
+        ai_results = ProcurementCommodityResult.objects.filter(procurement_id=purchasing.procurement.id)
+        if not ai_results.exists() and brands.exists():
+            brand_ids = list(brands.values_list('id', flat=True))
+            ai_results = ProcurementCommodityResult.objects.filter(brand_id__in=brand_ids)
+        for res in ai_results:
+            if res.item_name: valid_item_names.add(str(res.item_name).strip())
+        # -----------------------------------------------------------
+
         # 2. 获取所有供应商数据
         suppliers_queryset = ProcurementSupplier.objects.filter(procurement=purchasing)
         suppliers_info = []
@@ -246,6 +267,11 @@ def get_project_suppliers(request):
             comm_data = []
             s_total = 0
             for c in commodities:
+                # [核心修复]：如果商品名称不在当前项目的需求清单里，直接跳过！
+                c_name_clean = str(c.name).strip()
+                if valid_item_names and c_name_clean not in valid_item_names:
+                    continue
+                
                 qty = int(c.quantity or 0)
                 price = float(c.price or 0)
                 row_total = qty * price
