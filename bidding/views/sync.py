@@ -146,15 +146,29 @@ def retry_single_item(request):
             conn.commit()
             cur.close()
             conn.close()
+        # === 前面云端 PostgreSQL 同步的代码保持不变 ===
         except Exception as e:
             logger.error(f"❌ [云端同步] 同步单条商品需求失败: {e}")
+
+        # 👇 [核心修复点]：增加平台标识中英转换字典
+        # 爬虫脚本通常只能识别英文字符串，在这里做一层翻译
+        crawler_platform_map = {
+            "京东": "jd",
+            "淘宝": "taobao",
+            "1688": "1688"
+        }
+        
+        # 获取数据库里保存的平台名称（此时是中文），默认 fallback 到 'taobao'
+        raw_platform = brand_obj.search_platform or "淘宝"
+        # 转换成爬虫能认识的英文格式
+        target_crawler_platform = crawler_platform_map.get(raw_platform, raw_platform)
 
         task_payload = {
             "brand_id": brand_id,
             "server_ip": current_server, 
             "item_name": brand_obj.item_name,
             "key_word": brand_obj.key_word or brand_obj.item_name,
-            "platform": brand_obj.search_platform or "淘宝",
+            "platform": target_crawler_platform,  # 👉 传给爬虫的是 'jd' / 'taobao' / '1688'
             "procurement_id": brand_obj.procurement_id
         }
         r_client.lpush("crawler_task_queue", json.dumps(task_payload))
