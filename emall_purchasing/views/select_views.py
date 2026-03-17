@@ -115,16 +115,16 @@ class ProcurementSelectView(APIView):
                         cur.execute("""
                             SELECT item_name, specifications, selected_suppliers, selection_reason, model_used, status
                             FROM procurement_commodity_result
-                            WHERE procurement_id = %s 
-                              AND item_name = %s 
-                              AND status IN ('completed', 'synced', 'failed')
-                            ORDER BY 
-                                -- 优先挑选有数据的（长度大于 2 意味着不是 '[]' 或 '{}')
-                                CASE WHEN length(selected_suppliers::text) > 2 THEN 1 ELSE 2 END,
-                                -- 然后选最新的
-                                id DESC
+                            WHERE item_name = %s 
+                              AND procurement_id != %s  -- 👉 必须是别的项目的历史经验！不能抄自己！
+                              AND status IN ('completed', 'synced') -- 不要抄失败的
+                              AND model_used != 'System_Success'    -- 👉 坚决不复用系统占位符数据！
+                              AND length(selected_suppliers::text) > 15 -- 确保里面真的有商品数组
+                            ORDER BY id DESC
                             LIMIT 1
-                        """, (str(procurement_id), brand.item_name))
+                        """, (brand.item_name, str(procurement_id)))
+                        
+                        existing_result = cur.fetchone()
                         
                         existing_result = cur.fetchone()
                         
