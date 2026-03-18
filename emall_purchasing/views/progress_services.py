@@ -11,6 +11,7 @@ import json      # 👉 [新增]
 from django.db import transaction # 👉 [新增]
 from bidding.models import ProcurementCommodityResult
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -131,14 +132,6 @@ class ProcurementProgressService:
                                 }
                             )
                     
-                    # ✅ 无论成功失败，都在备注里同步 AI 的审计理由
-                    if reason:
-                        # 使用 get_or_create 防止重复刷新网页产生一堆重复备注
-                        ProcurementRemark.objects.get_or_create(
-                            purchasing=purchasing_info,
-                            remark_content=f"🤖 [AI 寻源报告] {item_name}: {reason}",
-                            defaults={'created_by': "AI_Auto", 'created_role': "系统智能引擎"}
-                        )
                         
                     # 3. 标记云端数据为已同步
                     cur.execute("UPDATE procurement_commodity_result SET status = 'synced' WHERE id = %s", (result_id,))

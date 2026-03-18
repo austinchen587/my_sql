@@ -11,7 +11,15 @@ from bidding.models import ProcurementCommodityResult  # 引入 AI 结果模型
 import json
 import logging
 import re # [新增] 用于提取数字
+from emall_purchasing.models import SupplierCommodity 
+from emall_purchasing.models import SupplierCommodity
+import psycopg2
+
+from emall_purchasing.views.progress_services import DB_CONFIG # 复用云端数据库配置
+
+
 logger = logging.getLogger(__name__)
+
 
 @api_view(['POST'])
 def toggle_supplier_selection(request):
@@ -197,34 +205,60 @@ def add_supplier(request):
 
 @api_view(['POST'])
 def delete_supplier(request):
-    """删除供应商"""
+    """删除供应商 - 彻底修复 AI 自动恢复问题"""
     supplier_id = request.data.get('supplier_id')
     project_id = request.data.get('project_id')
     
     try:
-        procurement = ProcurementEmall.objects.get(id=project_id)
-        purchasing = procurement.purchasing_info
+        # 1. 获取本地采购项目
+        try:
+            purchasing = ProcurementPurchasing.objects.get(procurement_id=project_id)
+        except:
+            procurement = ProcurementEmall.objects.get(id=project_id)
+            purchasing = procurement.purchasing_info
+
+        # 2. 🔥 【核心修复】同步修改云端中央数据库状态
+        # 只有把云端的 status 改掉，AutoImport 逻辑才不会再次拉取该结果
+        from bidding.models import SupplierCommodity
         
-        # 删除供应商关系
+        # 找到该供应商在该项目下的商品名称，用于精准定位
+        target_commodities = SupplierCommodity.objects.filter(
+            supplier_id=supplier_id,
+            supplier__procurements__procurement_id=project_id
+        )
+        
+        if target_commodities.exists():
+            # 连接云端数据库
+            conn = psycopg2.connect(**DB_CONFIG)
+            cur = conn.cursor()
+            for item in target_commodities:
+                # 👉 将云端状态改为 failed，并注明是用户手动删除
+                cur.execute("""
+                    UPDATE procurement_commodity_result 
+                    SET status = 'failed', selection_reason = '用户手动删除了该供应商及其结果'
+                    WHERE procurement_id = %s AND item_name = %s
+                """, (str(project_id), item.name))
+            conn.commit()
+            cur.close()
+            conn.close()
+
+        # 3. 删除本地供应商关联关系
         procurement_supplier = ProcurementSupplier.objects.get(
             procurement=purchasing,
             supplier_id=supplier_id
         )
         procurement_supplier.delete()
         
-        # 如果该供应商没有其他关联，可以删除供应商本身（可选）
+        # 4. 如果该供应商没有其他关联，删除供应商本身
         if not ProcurementSupplier.objects.filter(supplier_id=supplier_id).exists():
             Supplier.objects.filter(id=supplier_id).delete()
         
-        return create_success_response('供应商删除成功')
+        return create_success_response('供应商及其 AI 关联结果已彻底删除')
         
-    except (ProcurementEmall.DoesNotExist, ProcurementPurchasing.DoesNotExist):
-        return create_error_response('项目不存在', 404)
-    except ProcurementSupplier.DoesNotExist:
-        return create_error_response('供应商关系不存在', 404)
     except Exception as e:
-        print(f"DEBUG: Unexpected error in delete_supplier: {str(e)}")
-        return create_error_response(f'服务器内部错误: {str(e)}', 500)
+        logger.error(f"删除失败: {str(e)}")
+        return create_error_response(f'删除失败: {str(e)}', 500)
+
 
 @api_view(['POST'])
 def toggle_supplier_selection(request):
@@ -424,37 +458,111 @@ def add_supplier(request):
 
 @api_view(['POST'])
 def delete_supplier(request):
-    """删除供应商"""
+    """彻底删除供应商（釜底抽薪：直接篡改本地与云端的 JSON 数据）"""
     supplier_id = request.data.get('supplier_id')
     project_id = request.data.get('project_id')
     
+    logger.info(f"🗑️ 收到删除供应商请求 - SupplierID: {supplier_id}, ProjectID: {project_id}")
+    
     try:
-        # 兼容处理：可能传的是 procurement_id (string) 或 id (int)
-        # 我们假设 project_id 是 procurement_id，先尝试查 Purchasing
+        from emall_purchasing.models import ProcurementPurchasing, ProcurementSupplier, Supplier, SupplierCommodity
+        from emall.models import ProcurementEmall
+        
         try:
-            purchasing = ProcurementPurchasing.objects.get(procurement_id=project_id, is_selected=True)
+            purchasing = ProcurementPurchasing.objects.get(procurement_id=project_id)
         except:
-            # 如果失败，可能传的是 emall_id
             procurement = ProcurementEmall.objects.get(id=project_id)
             purchasing = procurement.purchasing_info
+
+        # 1. 获取要删除的店铺名称和关联商品
+        supplier_obj = Supplier.objects.filter(id=supplier_id).first()
+        shop_name_to_remove = supplier_obj.name if supplier_obj else ""
+        target_items = SupplierCommodity.objects.filter(supplier_id=supplier_id)
         
-        # 删除供应商关系
-        procurement_supplier = ProcurementSupplier.objects.get(
+        if target_items.exists() and shop_name_to_remove:
+            item_names = [item.name for item in target_items]
+            import json
+            
+            # 🔥 绝杀一：精准剔除【本地】JSON 数据
+            try:
+                from bidding.models import ProcurementCommodityResult
+                local_results = ProcurementCommodityResult.objects.filter(
+                    procurement_id=project_id,
+                    item_name__in=item_names
+                )
+                for res in local_results:
+                    try:
+                        # 解析 JSON
+                        s_list = json.loads(res.selected_suppliers) if isinstance(res.selected_suppliers, str) else res.selected_suppliers
+                        if s_list:
+                            # 过滤掉要删除的供应商
+                            new_list = [s for s in s_list if s.get('shop') != shop_name_to_remove]
+                            # 写回 JSON
+                            res.selected_suppliers = json.dumps(new_list, ensure_ascii=False)
+                            if not new_list:
+                                res.status = 'failed'  # 如果全删光了，标记为失败
+                            res.save()
+                    except Exception as parse_err:
+                        logger.warning(f"本地 JSON 解析忽略: {parse_err}")
+                logger.info("✅ 本地 JSON 数据已成功剔除目标供应商")
+            except Exception as local_err:
+                logger.error(f"❌ 本地 JSON 处理失败: {local_err}")
+
+            # 🔥 绝杀二：精准剔除【云端】JSON 数据
+            try:
+                import psycopg2
+                from emall_purchasing.views.progress_services import DB_CONFIG
+                conn = psycopg2.connect(**DB_CONFIG)
+                cur = conn.cursor()
+
+                for name in item_names:
+                    cur.execute("SELECT id, selected_suppliers FROM procurement_commodity_result WHERE procurement_id = %s AND item_name = %s", (str(project_id), name))
+                    row = cur.fetchone()
+                    if row:
+                        row_id, cloud_json = row
+                        try:
+                            c_list = json.loads(cloud_json) if isinstance(cloud_json, str) else cloud_json
+                            if c_list:
+                                new_c_list = [s for s in c_list if s.get('shop') != shop_name_to_remove]
+                                new_c_str = json.dumps(new_c_list, ensure_ascii=False)
+                                new_status = 'completed' if new_c_list else 'failed'
+                                
+                                # 将干净的 JSON 重新写回云端
+                                cur.execute("""
+                                    UPDATE procurement_commodity_result 
+                                    SET selected_suppliers = %s, status = %s
+                                    WHERE id = %s
+                                """, (new_c_str, new_status, row_id))
+                        except Exception as parse_err:
+                            pass
+                conn.commit()
+                cur.close()
+                conn.close()
+                logger.info("✅ 云端 JSON 数据已成功剔除目标供应商")
+            except Exception as cloud_err:
+                logger.error(f"❌ 云端 JSON 处理失败: {cloud_err}")
+        else:
+            logger.warning("⚠️ 未找到该供应商商品或名称，跳过 JSON 清理")
+
+        # 2. 删除本地关系
+        procurement_supplier = ProcurementSupplier.objects.filter(
             procurement=purchasing,
             supplier_id=supplier_id
-        )
-        procurement_supplier.delete()
+        ).first()
         
-        # 如果该供应商没有其他关联，可以删除供应商本身（可选）
+        if procurement_supplier:
+            procurement_supplier.delete()
+            logger.info("✅ 本地项目关联关系删除成功")
+        
+        # 3. 彻底清除供应商
         if not ProcurementSupplier.objects.filter(supplier_id=supplier_id).exists():
             Supplier.objects.filter(id=supplier_id).delete()
+            logger.info("✅ 供应商已从本地总库彻底清除")
         
-        return create_success_response('供应商删除成功')
+        from .base_views import create_success_response
+        return create_success_response('供应商已彻底删除')
         
-    except (ProcurementEmall.DoesNotExist, ProcurementPurchasing.DoesNotExist):
-        return create_error_response('项目不存在', 404)
-    except ProcurementSupplier.DoesNotExist:
-        return create_error_response('供应商关系不存在', 404)
     except Exception as e:
-        logger.error(f"Delete supplier error: {e}")
-        return create_error_response(f'服务器内部错误: {str(e)}', 500)
+        logger.error(f"❌ 删除操作发生崩溃: {str(e)}")
+        from .base_views import create_error_response
+        return create_error_response(f'删除失败: {str(e)}', 500)
