@@ -92,22 +92,36 @@ class ProcurementSelectView(APIView):
                     
                     # 2. 自动修复云端表结构 (如果缺少 specifications 字段，自动加上)
                     cur.execute("ALTER TABLE procurement_commodity_brand ADD COLUMN IF NOT EXISTS specifications TEXT;")
+                    # 👇 加上这两行“免死金牌”，确保存储万无一失
+                    cur.execute("ALTER TABLE procurement_commodity_brand ADD COLUMN IF NOT EXISTS key_word VARCHAR(255);")
+                    cur.execute("ALTER TABLE procurement_commodity_brand ADD COLUMN IF NOT EXISTS search_platform VARCHAR(50);")
                     conn.commit()
 
                     task_count = 0
                     shared_count = 0 # 记录成功白嫖的数量
                     for brand in brands:
-                        # 3. 将 Brand 需求数据同步写入云端中央库
-                        specs = getattr(brand, 'specifications', '')
+                        # 👉 1. 彻底清理脏数据（去除两端空格，防雷）
+                        clean_item_name = brand.item_name.strip() if brand.item_name else ""
+                        clean_key_word = brand.key_word.strip() if getattr(brand, 'key_word', None) else ""
+                        clean_platform = brand.search_platform.strip() if getattr(brand, 'search_platform', None) else ""
                         
+                        # 兜底默认值
+                        safe_key_word = clean_key_word if clean_key_word else (clean_item_name or "")
+                        safe_platform = clean_platform if clean_platform else "淘宝"
+                        specs = getattr(brand, 'specifications', '')
+
+                        # 3. 将 Brand 需求数据同步写入云端中央库 (附带完整字段)
                         cur.execute("""
-                            INSERT INTO procurement_commodity_brand (id, procurement_id, item_name, specifications)
-                            VALUES (%s, %s, %s, %s)
+                            INSERT INTO procurement_commodity_brand 
+                            (id, procurement_id, item_name, specifications, key_word, search_platform)
+                            VALUES (%s, %s, %s, %s, %s, %s)
                             ON CONFLICT (id) DO UPDATE SET 
                                 procurement_id = EXCLUDED.procurement_id,
                                 item_name = EXCLUDED.item_name,
-                                specifications = EXCLUDED.specifications;
-                        """, (brand.id, str(procurement_id), brand.item_name, specs))
+                                specifications = EXCLUDED.specifications,
+                                key_word = EXCLUDED.key_word,
+                                search_platform = EXCLUDED.search_platform;
+                        """, (brand.id, str(procurement_id), clean_item_name, specs, safe_key_word, safe_platform))
                         
                         # =========================================================
                         # 🔥 修复：优先复用有商品的记录！
@@ -122,11 +136,10 @@ class ProcurementSelectView(APIView):
                               AND length(selected_suppliers::text) > 15 -- 确保里面真的有商品数组
                             ORDER BY id DESC
                             LIMIT 1
-                        """, (brand.item_name, str(procurement_id)))
+                        """, (clean_item_name, str(procurement_id)))
                         
-                        existing_result = cur.fetchone()
-                        
-                        existing_result = cur.fetchone()
+                        # 👉 注意：这里只能有一句 fetchone()！删除了你多余的那句。
+                        existing_result = cur.fetchone() 
                         
                         if existing_result:
                             res_item_name, res_specs, res_suppliers, res_reason, res_model, res_status = existing_result
@@ -134,23 +147,16 @@ class ProcurementSelectView(APIView):
                             # 🛡️ 终极防御：先尝试解析再重新序列化，确保一定是双引号标准 JSON
                             try:
                                 if isinstance(res_suppliers, str):
-                                    # 如果是单引号的脏数据，这里会通过 json.loads 报错（如果是 Python 格式字符串则需 eval，但建议直接重写）
-                                    # 我们直接统一处理：
                                     import ast
-                                    # 如果包含单引号，说明是 Python 字符串表示形式，而非标准 JSON
                                     if "'" in res_suppliers and '"' not in res_suppliers:
                                         res_suppliers = ast.literal_eval(res_suppliers)
                                     else:
                                         res_suppliers = json.loads(res_suppliers)
                                 
-                                # 统一转为标准 JSON 字符串
                                 res_suppliers_str = json.dumps(res_suppliers, ensure_ascii=False)
                             except Exception:
-                                # 如果解析失败，兜底设为空列表
                                 res_suppliers_str = '[]'
                                 
-                            # 为当前服务器写一份记录（强行绑定当前服务器的 IP）
-                            # 为当前服务器写一份记录（强制把插入状态设为 'completed'）
                             cur.execute("""
                                 INSERT INTO procurement_commodity_result 
                                 (brand_id, server_ip, procurement_id, item_name, specifications, selected_suppliers, selection_reason, model_used, status)
@@ -159,18 +165,18 @@ class ProcurementSelectView(APIView):
                                     selected_suppliers = EXCLUDED.selected_suppliers,
                                     selection_reason = EXCLUDED.selection_reason,
                                     status = EXCLUDED.status;
-                            """, (brand.id, current_server, str(procurement_id), res_item_name, res_specs, res_suppliers_str, f"【跨服共享】{res_reason}", res_model, 'completed')) # 👈 注意这里：最后一个参数强制改成 'completed'
+                            """, (brand.id, current_server, str(procurement_id), res_item_name, res_specs, res_suppliers_str, f"【跨服共享】{res_reason}", res_model, 'completed')) 
                             
                             shared_count += 1
-                            logger.info(f"🎉 [跨服共享] 发现云端已有 {brand.item_name} 的结果(状态:{res_status})！服务器 {current_server} 瞬间复用！")
+                            logger.info(f"🎉 [跨服共享] 发现云端已有 {clean_item_name} 的结果(状态:{res_status})！服务器 {current_server} 瞬间复用！")
                         else:
-                            # 没有缓存，老老实实派发给爬虫
+                            # 👉 4. 没有缓存，老老实实派发给爬虫 (使用洗净的安全数据)
                             task_payload = {
                                 "brand_id": brand.id,
                                 "server_ip": current_server,
-                                "item_name": brand.item_name,
-                                "key_word": brand.key_word or brand.item_name,
-                                "platform": brand.search_platform or "淘宝",
+                                "item_name": clean_item_name,
+                                "key_word": safe_key_word,    # 👈 修正为清洗后的兜底变量
+                                "platform": safe_platform,    # 👈 修正为清洗后的兜底变量
                                 "procurement_id": str(procurement_id)
                             }
                             r_client.lpush("crawler_task_queue", json.dumps(task_payload))
