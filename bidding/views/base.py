@@ -86,7 +86,7 @@ class BiddingProjectListView(generics.ListAPIView):
                 )
         
         # 按照主键倒序排列，保证最新抓取的数据在最前
-        return qs.order_by('-pk')
+        return qs.order_by('-source_emall__publish_date', '-pk')
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
