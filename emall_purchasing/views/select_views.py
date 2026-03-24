@@ -100,9 +100,25 @@ class ProcurementSelectView(APIView):
                         clean_item_name = brand.item_name.strip() if brand.item_name else ""
                         safe_key_word = brand.key_word.strip() if getattr(brand, 'key_word', None) else clean_item_name
                         safe_platform = brand.search_platform.strip() if getattr(brand, 'search_platform', None) else "淘宝"
+                        specs = getattr(brand, 'specifications', '')
+
+                        # =========================================================
+                        # 🔥 [核心修复 1] 先把当前商品的 Brand 信息同步到云端！
+                        # 否则 Worker 爬完数据入库时，会因为找不到外键 brand_id 报错
+                        # =========================================================
+                        cur.execute("""
+                            INSERT INTO procurement_commodity_brand 
+                            (id, procurement_id, item_name, specifications, key_word, search_platform)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (id) DO UPDATE SET 
+                                procurement_id = EXCLUDED.procurement_id,
+                                item_name = EXCLUDED.item_name,
+                                specifications = EXCLUDED.specifications,
+                                key_word = EXCLUDED.key_word,
+                                search_platform = EXCLUDED.search_platform;
+                        """, (brand.id, str(procurement_id), clean_item_name, specs, safe_key_word, safe_platform))
 
                         # --- 【核心优化点：复合精准匹配】 ---
-                        # 利用 procurement_id + brand_id 复合索引快速定位，不进行全表循环
                         cur.execute("""
                             SELECT status FROM procurement_commodity_result 
                             WHERE procurement_id = %s AND brand_id = %s 

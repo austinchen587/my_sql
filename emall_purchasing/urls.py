@@ -5,6 +5,7 @@ from .views.progress_views import update_purchasing_info
 from .views.supplier_views import add_supplier_to_procurement, delete_supplier, update_supplier
 from .views.remark_views import add_remark  # 新增导入
 from .views.unified_remark_views import add_unified_remark, get_unified_remarks, delete_unified_remark
+from .views.select_views import ProcurementSelectView
 
 urlpatterns = [
     path('procurement/<int:procurement_id>/select/', ProcurementSelectView.as_view(), name='procurement-select'),
@@ -18,4 +19,10 @@ urlpatterns = [
     path('procurement/<int:procurement_id>/add_unified_remarks/', add_unified_remark, name='add_unified_remarks'),  # 修正路径
     path('procurement/<int:procurement_id>/get_unified_remarks/', get_unified_remarks, name='get_unified_remarks'),  # 修正路径
     path('remarks/<int:remark_id>/delete_unified_remark/', delete_unified_remark, name='delete_unified_remarks'),  # 修正路径
+
+
+    
+
+
+
 ]
