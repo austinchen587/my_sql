@@ -60,6 +60,7 @@ def get_real_server_ip(request):
 class ProcurementSelectView(APIView):
     def post(self, request, procurement_id):
         try:
+            # 1. 基础业务逻辑：获取采购项目与当前用户
             procurement = ProcurementEmall.objects.get(id=procurement_id)
             current_user = get_username_from_request(request)
             
@@ -68,6 +69,7 @@ class ProcurementSelectView(APIView):
                 defaults={'is_selected': True, 'project_owner': current_user}
             )
             
+            # 如果不是新创建的，则切换选中状态
             if not created:
                 if purchasing_info.is_selected:
                     purchasing_info.is_selected = False
@@ -78,107 +80,53 @@ class ProcurementSelectView(APIView):
                 purchasing_info.save()
             
             # ==============================================================
-            # 🔥 [架构升级] 自动派单 + 同步 Brand 数据到云端大本营！
+            # 🔥 [架构升级] 云端预检 + 精准派单逻辑
             # ==============================================================
             if purchasing_info.is_selected:
                 try:
-                    # 🛡️ 使用我们新写的穿透函数获取真实 IP
                     current_server = get_real_server_ip(request)
+                    # 获取该项目下所有的商品需求记录
                     brands = ProcurementCommodityBrand.objects.filter(procurement_id=procurement_id)
                     
-                    # 1. 连接云端中央数据库
+                    # 连接云端中央数据库
                     conn = psycopg2.connect(**DB_CONFIG)
                     cur = conn.cursor()
-                    
-                    # 2. 自动修复云端表结构 (如果缺少 specifications 字段，自动加上)
-                    cur.execute("ALTER TABLE procurement_commodity_brand ADD COLUMN IF NOT EXISTS specifications TEXT;")
-                    # 👇 加上这两行“免死金牌”，确保存储万无一失
-                    cur.execute("ALTER TABLE procurement_commodity_brand ADD COLUMN IF NOT EXISTS key_word VARCHAR(255);")
-                    cur.execute("ALTER TABLE procurement_commodity_brand ADD COLUMN IF NOT EXISTS search_platform VARCHAR(50);")
-                    conn.commit()
 
                     task_count = 0
-                    shared_count = 0 # 记录成功白嫖的数量
-                    for brand in brands:
-                        # 👉 1. 彻底清理脏数据（去除两端空格，防雷）
-                        clean_item_name = brand.item_name.strip() if brand.item_name else ""
-                        clean_key_word = brand.key_word.strip() if getattr(brand, 'key_word', None) else ""
-                        clean_platform = brand.search_platform.strip() if getattr(brand, 'search_platform', None) else ""
-                        
-                        # 兜底默认值
-                        safe_key_word = clean_key_word if clean_key_word else (clean_item_name or "")
-                        safe_platform = clean_platform if clean_platform else "淘宝"
-                        specs = getattr(brand, 'specifications', '')
+                    shared_count = 0 
 
-                        # 3. 将 Brand 需求数据同步写入云端中央库 (附带完整字段)
+                    for brand in brands:
+                        # 清洗数据
+                        clean_item_name = brand.item_name.strip() if brand.item_name else ""
+                        safe_key_word = brand.key_word.strip() if getattr(brand, 'key_word', None) else clean_item_name
+                        safe_platform = brand.search_platform.strip() if getattr(brand, 'search_platform', None) else "淘宝"
+
+                        # --- 【核心优化点：复合精准匹配】 ---
+                        # 利用 procurement_id + brand_id 复合索引快速定位，不进行全表循环
                         cur.execute("""
-                            INSERT INTO procurement_commodity_brand 
-                            (id, procurement_id, item_name, specifications, key_word, search_platform)
-                            VALUES (%s, %s, %s, %s, %s, %s)
-                            ON CONFLICT (id) DO UPDATE SET 
-                                procurement_id = EXCLUDED.procurement_id,
-                                item_name = EXCLUDED.item_name,
-                                specifications = EXCLUDED.specifications,
-                                key_word = EXCLUDED.key_word,
-                                search_platform = EXCLUDED.search_platform;
-                        """, (brand.id, str(procurement_id), clean_item_name, specs, safe_key_word, safe_platform))
-                        
-                        # =========================================================
-                        # 🔥 修复：优先复用有商品的记录！
-                        # =========================================================
-                        cur.execute("""
-                            SELECT item_name, specifications, selected_suppliers, selection_reason, model_used, status
-                            FROM procurement_commodity_result
-                            WHERE item_name = %s 
-                              AND procurement_id != %s  -- 👉 必须是别的项目的历史经验！不能抄自己！
-                              AND status IN ('completed', 'synced') -- 不要抄失败的
-                              AND model_used != 'System_Success'    -- 👉 坚决不复用系统占位符数据！
-                              AND length(selected_suppliers::text) > 15 -- 确保里面真的有商品数组
-                            ORDER BY id DESC
+                            SELECT status FROM procurement_commodity_result 
+                            WHERE procurement_id = %s AND brand_id = %s 
+                              AND status IN ('completed', 'synced')
                             LIMIT 1
-                        """, (clean_item_name, str(procurement_id)))
+                        """, (str(procurement_id), brand.id))
                         
-                        # 👉 注意：这里只能有一句 fetchone()！删除了你多余的那句。
-                        existing_result = cur.fetchone() 
-                        
-                        if existing_result:
-                            res_item_name, res_specs, res_suppliers, res_reason, res_model, res_status = existing_result
-                            
-                            # 🛡️ 终极防御：先尝试解析再重新序列化，确保一定是双引号标准 JSON
-                            try:
-                                if isinstance(res_suppliers, str):
-                                    import ast
-                                    if "'" in res_suppliers and '"' not in res_suppliers:
-                                        res_suppliers = ast.literal_eval(res_suppliers)
-                                    else:
-                                        res_suppliers = json.loads(res_suppliers)
-                                
-                                res_suppliers_str = json.dumps(res_suppliers, ensure_ascii=False)
-                            except Exception:
-                                res_suppliers_str = '[]'
-                                
-                            cur.execute("""
-                                INSERT INTO procurement_commodity_result 
-                                (brand_id, server_ip, procurement_id, item_name, specifications, selected_suppliers, selection_reason, model_used, status)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                                ON CONFLICT (brand_id, server_ip) DO UPDATE SET 
-                                    selected_suppliers = EXCLUDED.selected_suppliers,
-                                    selection_reason = EXCLUDED.selection_reason,
-                                    status = EXCLUDED.status;
-                            """, (brand.id, current_server, str(procurement_id), res_item_name, res_specs, res_suppliers_str, f"【跨服共享】{res_reason}", res_model, 'completed')) 
-                            
+                        existing_res = cur.fetchone()
+
+                        if existing_res:
+                            # 命中结果：说明该项目的该商品已处理完成，直接复用
                             shared_count += 1
-                            logger.info(f"🎉 [跨服共享] 发现云端已有 {clean_item_name} 的结果(状态:{res_status})！服务器 {current_server} 瞬间复用！")
+                            logger.info(f"✅ [精准共享] 项目:{procurement_id} | 商品ID:{brand.id} ({clean_item_name}) 已有结果。")
                         else:
-                            # 👉 4. 没有缓存，老老实实派发给爬虫 (使用洗净的安全数据)
+                            # 未命中：构建任务负载并下发至 Redis 任务队列
                             task_payload = {
                                 "brand_id": brand.id,
+                                "procurement_id": str(procurement_id),
                                 "server_ip": current_server,
                                 "item_name": clean_item_name,
-                                "key_word": safe_key_word,    # 👈 修正为清洗后的兜底变量
-                                "platform": safe_platform,    # 👈 修正为清洗后的兜底变量
-                                "procurement_id": str(procurement_id)
+                                "key_word": safe_key_word,
+                                "platform": safe_platform
                             }
+                            # 推入队列，由 API Worker 监听并执行 Search -> Detail 环节
                             r_client.lpush("crawler_task_queue", json.dumps(task_payload))
                             task_count += 1
                     
@@ -186,9 +134,9 @@ class ProcurementSelectView(APIView):
                     cur.close()
                     conn.close()
                     
-                    logger.info(f"🚀 [自动派单] 项目 {procurement_id} 处理完毕：派发新任务 {task_count} 个，跨服共享 {shared_count} 个！")
+                    logger.info(f"🚀 [派单完成] 项目 {procurement_id}: 新增任务 {task_count} 个，精准复用 {shared_count} 个。")
                 except Exception as e:
-                    logger.error(f"❌ [自动派单与同步] 失败: {e}")
+                    logger.error(f"❌ [云端预检与派单] 失败: {e}")
             # ==============================================================
             
             return Response({
@@ -200,7 +148,7 @@ class ProcurementSelectView(APIView):
             
         except Exception as e:
             logger.error(f"操作失败，错误: {str(e)}")
-            return Response({'success': False, 'error': str(e)},status=500)
+            return Response({'success': False, 'error': str(e)}, status=500)
 class ProcurementPurchasingListView(APIView):
     """已选择的采购项目列表"""
     def get(self, request):

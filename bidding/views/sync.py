@@ -78,103 +78,74 @@ def sync_province_data(request):
 @authentication_classes([]) 
 @permission_classes([AllowAny])
 def retry_single_item(request):
-    """【修复版】重新寻源接口"""
+    """【新架构适配版】重新寻源接口"""
     brand_id = request.data.get('brand_id')
     new_keyword = request.data.get('new_keyword')
     new_platform = request.data.get('new_platform')
     
-    # 🛡️ 使用强力穿透函数
     current_server = get_real_server_ip(request)
     
     if not brand_id:
         return Response({'success': False, 'message': '缺少商品ID'}, status=400)
 
     try:
+        # 1. 本地逻辑更新
         brand_obj = ProcurementCommodityBrand.objects.get(id=brand_id)
-        if new_keyword or new_platform:
-            if new_keyword: brand_obj.key_word = new_keyword
-            if new_platform: brand_obj.search_platform = new_platform
-            brand_obj.save()
+        if new_keyword: brand_obj.key_word = new_keyword.strip()
+        if new_platform: brand_obj.search_platform = new_platform.strip()
+        brand_obj.save()
 
-        # 👉 [修复 1] 移除 exclude(server_ip=...)
-        existing_success = ProcurementCommodityResult.objects.filter(
-            brand_id=brand_id, 
-            status='completed'
-        ).first()
-
-        if existing_success and not new_keyword:
-            # 👉 [修复 2] 移除 server_ip=current_server
-            ProcurementCommodityResult.objects.update_or_create(
-                brand_id=brand_id,
-                defaults={
-                    'item_name': existing_success.item_name,
-                    'specifications': existing_success.specifications,
-                    'selected_suppliers': existing_success.selected_suppliers,
-                    'selection_reason': f"直接复用已有的同步结果",
-                    'model_used': existing_success.model_used,
-                    'status': 'completed'
-                }
-            )
-            return Response({'success': True, 'message': '✅ 已直接复用抓取结果'})
-
-        # 👉 [修复 3] 移除 server_ip=current_server
-        ProcurementCommodityResult.objects.update_or_create(
-            brand_id=brand_id,
-            defaults={
-                'status': 'retry',
-                'selection_reason': f'服务器 {current_server} 正在重新寻源中...',
-                'item_name': brand_obj.item_name
-            }
-        )
-
-        # === 后面云端同步和 Redis 派发的代码保持不变 ===
+        # 2. 云端大本营同步与状态重置
         try:
-            conn = psycopg2.connect(**DB_CONFIG)
+            conn = psycopg2.connect(**DB_CONFIG) # 使用 77.214 配置
             cur = conn.cursor()
-            cur.execute("ALTER TABLE procurement_commodity_brand ADD COLUMN IF NOT EXISTS specifications TEXT;")
-            conn.commit()
             
+            # A. 确保云端 Brand 信息是最新的（含修改后的关键词）
             specs = getattr(brand_obj, 'specifications', '')
             cur.execute("""
-                INSERT INTO procurement_commodity_brand (id, procurement_id, item_name, specifications)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO procurement_commodity_brand (id, procurement_id, item_name, specifications, key_word, search_platform)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE SET 
-                    item_name = EXCLUDED.item_name,
-                    specifications = EXCLUDED.specifications;
-            """, (brand_obj.id, str(brand_obj.procurement_id), brand_obj.item_name, specs))
+                    key_word = EXCLUDED.key_word,
+                    search_platform = EXCLUDED.search_platform,
+                    item_name = EXCLUDED.item_name;
+            """, (brand_obj.id, str(brand_obj.procurement_id), brand_obj.item_name, specs, brand_obj.key_word, brand_obj.search_platform))
+            
+            # B. 🔥【关键点】重置云端 Result 状态，确保 Worker 重新执行后同步脚本才会拉取新数据
+            cur.execute("""
+                UPDATE procurement_commodity_result 
+                SET status = 'searching', selection_reason = %s
+                WHERE brand_id = %s;
+            """, (f"服务器 {current_server} 正在重新寻源中...", brand_id))
             
             conn.commit()
             cur.close()
             conn.close()
-        # === 前面云端 PostgreSQL 同步的代码保持不变 ===
         except Exception as e:
-            logger.error(f"❌ [云端同步] 同步单条商品需求失败: {e}")
+            logger.error(f"❌ [云端同步] 重新寻源前置处理失败: {e}")
 
-        # 👇 [核心修复点]：增加平台标识中英转换字典
-        # 爬虫脚本通常只能识别英文字符串，在这里做一层翻译
-        crawler_platform_map = {
-            "京东": "jd",
-            "淘宝": "taobao",
-            "1688": "1688"
-        }
-        
-        # 获取数据库里保存的平台名称（此时是中文），默认 fallback 到 'taobao'
+        # 3. 标准化派发 Redis 任务
+        crawler_platform_map = {"京东": "jd", "淘宝": "taobao", "1688": "1688"}
         raw_platform = brand_obj.search_platform or "淘宝"
-        # 转换成爬虫能认识的英文格式
-        target_crawler_platform = crawler_platform_map.get(raw_platform, raw_platform)
+        target_crawler_platform = crawler_platform_map.get(raw_platform, raw_platform).lower()
 
         task_payload = {
             "brand_id": brand_id,
+            "procurement_id": str(brand_obj.procurement_id),
             "server_ip": current_server, 
             "item_name": brand_obj.item_name,
             "key_word": brand_obj.key_word or brand_obj.item_name,
-            "platform": target_crawler_platform,  # 👉 传给爬虫的是 'jd' / 'taobao' / '1688'
-            "procurement_id": brand_obj.procurement_id
+            "platform": target_crawler_platform
         }
+        
+        # 将任务投递至队列
         r_client.lpush("crawler_task_queue", json.dumps(task_payload))
 
-        return Response({'success': True, 'message': f'✅ 任务已提交'})
+        return Response({
+            'success': True, 
+            'message': f'✅ 已提交重新寻源请求 ({raw_platform}:{brand_obj.key_word})'
+        })
 
     except Exception as e:
-        logger.error(f"❌ 派单失败: {str(e)}")
+        logger.error(f"❌ 重新寻源派单失败: {str(e)}")
         return Response({'success': False, 'message': str(e)}, status=500)
