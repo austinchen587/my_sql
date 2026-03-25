@@ -12,6 +12,8 @@ from .views import (
 from emall_purchasing.views.remark_views import add_remark
 from .views.sync import sync_province_data
 
+from .views import sync
+
 urlpatterns = [
     path('stats/provinces/', ProvinceStatsView.as_view(), name='province-stats'),
     
@@ -28,5 +30,6 @@ urlpatterns = [
     path('sync/', sync_province_data, name='bidding-sync'),
 
     # [新增] 单商品重试路由
-    path('item/retry/', retry_single_item, name='item-retry')
+    path('item/retry/', retry_single_item, name='item-retry'),
+    path('raw-data/', sync.get_raw_crawler_data, name='get_raw_crawler_data'),
 ]

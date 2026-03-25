@@ -149,3 +149,44 @@ def retry_single_item(request):
     except Exception as e:
         logger.error(f"❌ 重新寻源派单失败: {str(e)}")
         return Response({'success': False, 'message': str(e)}, status=500)
+
+@api_view(['GET'])
+@authentication_classes([]) 
+@permission_classes([AllowAny])
+def get_raw_crawler_data(request):
+    """获取爬虫搜索或详情的原数据"""
+    brand_id = request.query_params.get('brand_id')
+    platform = request.query_params.get('platform')  # 京东, 淘宝, 1688
+    data_type = request.query_params.get('type')     # search, detail
+    
+    if not all([brand_id, platform, data_type]):
+        return Response({'error': '缺少必要参数'}, status=400)
+
+    # 1. 映射平台英文名
+    platform_map = {"京东": "jd", "淘宝": "taobao", "1688": "1688"}
+    p_en = platform_map.get(platform)
+    if not p_en: 
+        return Response({'error': f'平台 {platform} 不识别'}, status=400)
+
+    # 2. 拼装表名
+    table_name = f"procurement_commodity_{p_en}_{data_type}"
+    
+    try:
+        # 使用你文件中已定义的 DB_CONFIG 连接
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        
+        # 查询该 brand_id 下的所有原记录
+        query = f"SELECT * FROM {table_name} WHERE brand_id = %s ORDER BY id DESC"
+        cur.execute(query, (brand_id,))
+        
+        # 获取列名并组装为字典列表
+        columns = [desc[0] for desc in cur.description]
+        rows = cur.fetchall()
+        result = [dict(zip(columns, row)) for row in rows]
+        
+        cur.close()
+        conn.close()
+        return Response({'success': True, 'data': result})
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=500)
