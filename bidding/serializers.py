@@ -27,6 +27,7 @@ class BiddingHallSerializer(serializers.ModelSerializer):
     
     requirements = serializers.SerializerMethodField()
     recommendations = serializers.SerializerMethodField()
+    publish_date = serializers.SerializerMethodField()
 
     class Meta:
         model = BiddingProject
@@ -35,7 +36,7 @@ class BiddingHallSerializer(serializers.ModelSerializer):
             'price_display', 'start_time', 'end_time', 'status', 'status_text',
             'countdown', 'requirements', 'recommendations',
             'is_selected', 'project_owner', 'bidding_status_display', 'bidding_status',
-            'latest_remark_content', 'latest_remark_by', 'latest_remark_at'
+            'latest_remark_content', 'latest_remark_by', 'latest_remark_at','publish_date'
         ]
 
     # ... (辅助方法保持不变) ...
@@ -226,3 +227,19 @@ class BiddingHallSerializer(serializers.ModelSerializer):
             return []
             
         return final_list
+
+    # [新增] 实现获取发布日期的逻辑
+    def get_publish_date(self, obj):
+        """从关联的原始项目中提取发布日期"""
+        try:
+            # 这里的 obj 是 BiddingProject，通过 source_emall 找到原始表
+            raw_date = getattr(obj.source_emall, 'publish_date', None)
+            if not raw_date:
+                return '-'
+            
+            # 如果是 datetime 对象则格式化为 YYYY-MM-DD，否则直接转字符串
+            if hasattr(raw_date, 'strftime'):
+                return raw_date.strftime('%Y-%m-%d')
+            return str(raw_date)
+        except Exception:
+            return '-'
