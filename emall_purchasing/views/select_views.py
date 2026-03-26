@@ -119,19 +119,22 @@ class ProcurementSelectView(APIView):
                         """, (brand.id, str(procurement_id), clean_item_name, specs, safe_key_word, safe_platform))
 
                         # --- 【核心优化点：复合精准匹配】 ---
+                        # --- 【核心优化点：复合精准匹配】 ---
                         cur.execute("""
                             SELECT status FROM procurement_commodity_result 
                             WHERE procurement_id = %s AND brand_id = %s 
-                              AND status IN ('completed', 'synced')
+                              AND status IN ('completed', 'synced', 'searching')
                             LIMIT 1
                         """, (str(procurement_id), brand.id))
                         
                         existing_res = cur.fetchone()
 
                         if existing_res:
-                            # 命中结果：说明该项目的该商品已处理完成，直接复用
+                            # 命中结果：说明该项目的该商品已处理完成或正在处理中
                             shared_count += 1
-                            logger.info(f"✅ [精准共享] 项目:{procurement_id} | 商品ID:{brand.id} ({clean_item_name}) 已有结果。")
+                            # 👉 修正：先打印日志，再执行 continue
+                            logger.info(f"✅ [精准共享] 项目:{procurement_id} | 商品ID:{brand.id} ({clean_item_name}) 状态为 {existing_res[0]}，跳过派单。")
+                            continue 
                         else:
                             # 未命中：构建任务负载并下发至 Redis 任务队列
                             task_payload = {
@@ -142,7 +145,7 @@ class ProcurementSelectView(APIView):
                                 "key_word": safe_key_word,
                                 "platform": safe_platform
                             }
-                            # 推入队列，由 API Worker 监听并执行 Search -> Detail 环节
+                            # 推入队列，由 API Worker 监听并执行
                             r_client.lpush("crawler_task_queue", json.dumps(task_payload))
                             task_count += 1
                     

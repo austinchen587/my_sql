@@ -48,7 +48,7 @@ class ProcurementProgressService:
                 FROM procurement_commodity_result 
                 WHERE procurement_id = %s AND server_ip = %s 
                   AND status IN ('completed', 'failed')
-            """, (str(procurement_id), current_server))
+            """, (str(procurement_id),))
             
             rows = cur.fetchall()
             if not rows: return
@@ -71,13 +71,13 @@ class ProcurementProgressService:
                     ProcurementCommodityResult.objects.update_or_create(
                         brand_id=brand_id,
                         defaults={
+                            'procurement_id': str(procurement_id), # 确保项目ID也对上
                             'item_name': item_name,
                             'specifications': specs or '',
-                            # 👉 使用修复后的 final_suppliers_json
                             'selected_suppliers': final_suppliers_json, 
                             'selection_reason': reason or '',
                             'model_used': model or 'qwen-plus',
-                            'status': res_status
+                            'status': res_status # 关键：把本地的 'searching' 改成 'completed'
                         }
                     )
 
