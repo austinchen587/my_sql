@@ -36,19 +36,18 @@ class ProcurementProgressService:
 
     # 👉 [新增核心方法] 从云端中央库把 AI 结果拉回本地变成真实的供应商！
     def _sync_ai_results_from_central(self, procurement_id, request):
-        current_server = get_real_server_ip(request)
-        
         try:
             conn = psycopg2.connect(**DB_CONFIG)
             cur = conn.cursor()
             
-            # 1. 绝不拉取 'synced'，只拉取真正需要同步的 'completed' 和 'failed'
+            # 👉 [核心修复]：确保 SQL 里只有一个 %s，后面的元组里也只有一个参数
+            # 因为我们不再按 IP 过滤，所以只需传入 procurement_id
             cur.execute("""
                 SELECT id, brand_id, item_name, specifications, selected_suppliers, selection_reason, model_used, status 
                 FROM procurement_commodity_result 
-                WHERE procurement_id = %s AND server_ip = %s 
+                WHERE procurement_id = %s 
                   AND status IN ('completed', 'failed')
-            """, (str(procurement_id),))
+            """, (str(procurement_id),)) # 注意：(x,) 这种写法代表只有一个元素的元组
             
             rows = cur.fetchall()
             if not rows: return

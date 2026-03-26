@@ -130,10 +130,9 @@ class ProcurementSelectView(APIView):
                         existing_res = cur.fetchone()
 
                         if existing_res:
-                            # 命中结果：说明该项目的该商品已处理完成或正在处理中
-                            shared_count += 1
-                            # 👉 修正：先打印日志，再执行 continue
+                            # 👉 [修正]：先打印日志，再 continue
                             logger.info(f"✅ [精准共享] 项目:{procurement_id} | 商品ID:{brand.id} ({clean_item_name}) 状态为 {existing_res[0]}，跳过派单。")
+                            shared_count += 1
                             continue 
                         else:
                             # 未命中：构建任务负载并下发至 Redis 任务队列
