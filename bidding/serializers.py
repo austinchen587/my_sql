@@ -148,19 +148,22 @@ class BiddingHallSerializer(serializers.ModelSerializer):
         if self.context.get('view_type') == 'list': return None
         final_list = []
         try:
-            # 1. 获取 ID
-            source_id = getattr(obj, 'source_emall_id', None)
-            if not source_id:
-                return []
+            # 1. 获取项目编号（这是两边都一致的“定海神针”）
+            project_no = getattr(obj, 'project_number', None)
+            if not project_no:
+                # 如果没有编号，再尝试用 ID 兜底
+                source_id = getattr(obj, 'source_emall_id', None)
+                if not source_id: return []
+                brands = ProcurementCommodityBrand.objects.filter(procurement_id=source_id)
+            else:
+                # [核心修复] 使用项目编号查询，不再信任错位的 ID
+                brands = ProcurementCommodityBrand.objects.filter(project_number=project_no)
 
-            # 2. 先查出所有的 Brands (商品清单)
-            brands = ProcurementCommodityBrand.objects.filter(procurement_id=source_id)
-            
-            # 3. [核心修复] 收集所有 Brand IDs，直接用 IDs 去查 Result
-            # 不再使用 results = ProcurementCommodityResult.objects.filter(procurement_id=source_id)
+            # 2. 获取所有的 Brand IDs 用于后续 Result 匹配
+            # 这里 b.id 是 brand 表的主键，它在自己表里是可靠的，可以继续用
             brand_ids = list(brands.values_list('id', flat=True))
             
-            # 使用 brand_id__in 进行批量查询
+            # 3. 批量查询 Result (逻辑保持不变，因为 brand_id 是 brand 表自己的主键)
             results = ProcurementCommodityResult.objects.filter(brand_id__in=brand_ids)
 
             # [调试日志] 看看这就对了
